@@ -501,7 +501,7 @@ Now it's time to assign taxonomic identities to our ASVs. Dr. Callahan utilizes 
 
 In order to assign the taxonomic IDs to our ASVs, we need to have a reference database FASTA file to use as our known training data. These training data with known references will help the classifier determine which taxa our ASVs belong to. Currently the options for reference databases include the latest versions of the **Silva** database (for 16S), the **Ribosomal Database Project** database (for 16S), and the **UNITE** database (which should be used specifically for ITS sequences). A **Green Genes** database file is also included (for 16S analyses), but Green Genes has not been updated in a long time and thus is not the best choice for our reference training dataset. Dr. Callahan has included these reference database files [here](https://benjjneb.github.io/dada2/training.html).
 ```{r assign_taxa_asv, eval=FALSE}
-taxa <- assignTaxonomy(seqtab.nochim, "/bigdata/aronsonlab/shared/DADA2_Silva_Files/silva_nr99_v138.1_wSpecies_train_set.fa.gz", multithread=TRUE)
+taxa <- assignTaxonomy(seqtab.nochim, "/bigdata/aronsonlab/shared/DADA2_Silva_Files/silva_nr99_v138.1_wSpecies_train_set.fa.gz", multithread=TRUE); save.image(file = "mydada_16S.Rdata")
 
 taxa.print <- taxa # Removing sequence rownames for display only
 rownames(taxa.print) <- NULL
@@ -556,6 +556,9 @@ saveRDS(asv_tab, file = "16S.V4_ASVs_Counts_dada2_Robject.rds", ascii = FALSE, v
         compress = TRUE, refhook = NULL)
 saveRDS(asv_fasta, file = "16S.V4_ASV_Sequences_dada2_Robject.rds", ascii = FALSE, version = NULL,
         compress = TRUE, refhook = NULL)
+
+#### Save everything from global environment into .Rdata file
+save.image(file = "mydada_16S.Rdata")
 ```
 Personally, I like using R objects (file extension .rds) in my analyses. In order to import R objects into R, you can run `data.frame(readRDS("path/to/Robject.rds", refhook = NULL))` to create a data frame holding the contents of your R object file.
 
