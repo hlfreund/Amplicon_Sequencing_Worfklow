@@ -30,7 +30,7 @@ rmarkdown::render("Amplicon_Workflow.Rmd", clean=TRUE, output_format="html_docum
 R
 
 Rendering from the command-line. To render to PDF format, use the argument setting: output_format="pdf_document".
-$ Rscript -e "rmarkdown::render('Metagenomics_Workflow.Rmd', output_format='html_document', clean=TRUE)"
+$ Rscript -e "rmarkdown::render('Amplicon_Workflow.Rmd', output_format='html_document', clean=TRUE)"
 
 Add logo:
 htmltools::img(src = knitr::image_uri("mylogo.png"), 
@@ -326,19 +326,19 @@ list.files(path)
 fnFs <- sort(list.files(path, pattern="_R1_clean.fastq", full.names = TRUE))
 fnFs # sanity check to see what the file names are
 
-fnRs <- sort(list.files(path, pattern="_R2_clean.fastq", full.names = TRUE)); save.image(file = "mydada_16S.Rdata") # saves all objects in global env.; runs after portion of code before ";"
+fnRs <- sort(list.files(path, pattern="_R2_clean.fastq", full.names = TRUE)); save.image(file = "mydada_16S.V4.Rdata") # saves all objects in global env.; runs after portion of code before ";"
 
 # Extract sample names, assuming filenames have format: SAMPLENAME_XXX.fastq
 sample.names <- sapply(strsplit(basename(fnFs), "_R1"), `[`, 1) #pattern where you want to split the name; i.e., at the _R1 level
 ## want to split by R1 so that you do not get duplicate sample names for each R1/R2 paired-end sequences
-save.image(file = "mydada_16S.Rdata") # save global env.
+save.image(file = "mydada_16S.V4.Rdata") # save global env.
 
 sample.names # sanity check
 ```
 If you have already started the `DADA2` workflow and want to pick up from where you left off, then you can run this next code chunk to load everything that was in your global environment and saved to an .Rdata object (I will explain this code when we save our first .Rdata file).
 ```{r load_data, eval=FALSE}
-## If you are picking up where you left off, load your mydada_16S.Rdata file now
-load("/path/to/fastq/files/mydada_16S.Rdata")
+## If you are picking up where you left off, load your mydada_16S.V4.Rdata file now
+load("/path/to/fastq/files/mydada_16S.V4.Rdata")
 ```
 ## Check sequence quality
 Though we have already done this with `FastQC`, there is a step here to check the quality of our forward and reverse reads. These per base sequence quality reports do look nicer than the `FastQC` output and tell you the total number of reads in that particular sample. We use `ggsave()` from the `ggpubr` [package](https://rpkgs.datanovia.com/ggpubr/index.html) to save these reports as high quality PDFs.
@@ -380,14 +380,14 @@ filtRs <- file.path(path, "Filtered", paste0(sample.names, "_R_filtered.fastq.gz
 
 # giving these file.name elements the sames of the samples
 names(filtFs) <- sample.names
-names(filtRs) <- sample.names; save.image(file = "mydada_16S.Rdata")
+names(filtRs) <- sample.names; save.image(file = "mydada_16S.V4.Rdata")
 
 filtFs # let's see what this object looks like
 
 # Filter & Trim! 
 out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c(250,235),
                      maxN=0, maxEE=c(2,3), truncQ=2, rm.phix=TRUE,
-                     compress=TRUE, multithread=TRUE); save.image(file = "mydada_16S.Rdata") # On Windows set multithread=FALSE
+                     compress=TRUE, multithread=TRUE); save.image(file = "mydada_16S.V4.Rdata") # On Windows set multithread=FALSE
 
 # filterAndTrim notes:
 ## The maxEE parameter sets the maximum number of “expected errors” allowed in a read, which is a better filter than simply averaging quality scores.
@@ -405,8 +405,8 @@ Dr. Callahan developed an algorithm for a parametric error model that can use bo
 > The DADA2 algorithm makes use of a parametric error model (`err`) and every amplicon dataset has a different set of error rates. The learnErrors method learns this error model from the data, by alternating estimation of the error rates and inference of sample composition until they converge on a jointly consistent solution. As in many machine-learning problems, the algorithm must begin with an initial guess, for which the maximum possible error rates in this data are used (the error rates if only the most abundant sequence is correct and all the rest are errors).
 
 ```{r learn_plot_errors, eval=FALSE}
-errF <- learnErrors(filtFs, multithread=TRUE); save.image(file = "mydada_16S.Rdata")
-errR <- learnErrors(filtRs, multithread=TRUE); save.image(file = "mydada_16S.Rdata")
+errF <- learnErrors(filtFs, multithread=TRUE); save.image(file = "mydada_16S.V4.Rdata")
+errR <- learnErrors(filtRs, multithread=TRUE); save.image(file = "mydada_16S.V4.Rdata")
 # The learnErrors method learns this error model from the data by alternating estimation of the error rates and inference of sample composition until they converge on a jointly consistent solution.
 # As in many machine-learning (ML) problems, the algorithm must begin with an initial guess, for which the maximum possible error rates in this data are used (the error rates if only the most abundant sequence is correct and all the rest are errors)
 
@@ -431,8 +431,8 @@ The output of the algorithm will be a `data-class` object, containing the number
 ```{r dada_time, eval=FALSE}
 filtFs <- filtFs[file.exists(filtFs)] # removes files that were not included in output because 0 reads passed filter step
 filtRs <- filtRs[file.exists(filtRs)]
-dadaFs <- dada(filtFs, err=errF, multithread=TRUE, pool=TRUE); save.image(file = "mydada_16S.Rdata") # pseudo pooling is computationally more efficient but similar in results to pooling; pool = True will pool samples together before sample inference
-dadaRs <- dada(filtRs, err=errR, multithread=TRUE, pool=TRUE); save.image(file = "mydada_16S.Rdata")
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE, pool=TRUE); save.image(file = "mydada_16S.V4.Rdata") # pseudo pooling is computationally more efficient but similar in results to pooling; pool = True will pool samples together before sample inference
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE, pool=TRUE); save.image(file = "mydada_16S.V4.Rdata")
 
 dadaFs[1] # Returns first section of dada-class object {one sample}
 ```
@@ -441,7 +441,7 @@ The wonderful thing about ASVs is that because they are assigned based on 99% se
 ## Merge Forward + Reverse Reads
 At this point in the workflow, we are now going to merge our denoised Forward and Reverse reads to get our contiguous sequences (i.e., contigs). Sequences will be merged if they share at least 12 nucleotides. These sequences must be identical to each other in these overlapping regions or else they will not be merged. 
 ```{r merge_reads, eval=FALSE}
-mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE); save.image(file = "mydada_16S.Rdata")
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE); save.image(file = "mydada_16S.V4.Rdata")
 head(mergers[[1]])
 ```
 The `mergers` object is a `data.frame` containing the merged sequence, its abundance, and some statistics about the sequences themselves. If most of your reads do not merge, then you should revisit the filter and trimming step. It could be that you cut too much off of your sequencing reads, making it more difficult to successfully merge your reads.
@@ -451,7 +451,7 @@ Let's make an ASV table (similar to an OTU table but using ASVs), which will hav
 
 Using this table, we get a sense of how long our ASVs are and the distribution of these ASV lengths. We can also determine the percentage of reads that fall within our desired range of region lengths.
 ```{r make_seq_table, eval=FALSE}
-seqtab <- makeSequenceTable(mergers); save.image(file = "mydada_16S.Rdata")
+seqtab <- makeSequenceTable(mergers); save.image(file = "mydada_16S.V4.Rdata")
 dim(seqtab)
 table(nchar(getSequences(seqtab)))
 
@@ -460,11 +460,12 @@ seqtab2 <- seqtab[,nchar(colnames(seqtab)) %in% 250:290] # here looking at ASVs 
 dim(seqtab2)
 table(nchar(getSequences(seqtab2)))
 
-sum(seqtab2)/sum(seqtab) # how many reads fall within our desired length range
+# how many reads fall within our desired length range
+sum(seqtab2)/sum(seqtab) 
 
 # Look at merged sequences in a plot -- see their distribution and frequency of sequences of certain length
 ## x axis - total number of reads per sample; y axis - density of samples w/ specific # of total reads
-compare_reads_plot1 = ggdensity(rowSums(seqtab1), fill = "blue4", alpha = 0.7); save.image(file = "mydada_16S.Rdata")
+compare_reads_plot1 = ggdensity(rowSums(seqtab), fill = "blue4", alpha = 0.7); save.image(file = "mydada_16S.V4.Rdata")
 compare_reads_plot2 = ggdensity(rowSums(seqtab2), fill = "red4", alpha = 0.7)
 comp_plots<-ggarrange(compare_reads_plot1, compare_reads_plot2,labels=c("All Reads", "Reads of Desired Length"),ncol=1, nrow=2)
 ggsave(comp_plots,filename = "16S.V4_compare_total_reads.pdf", width=10, height=20, dpi=600)
@@ -473,7 +474,7 @@ dev.off()
 ## Remove Chimeras
 Now we are going to remove all chimeric sequences from our data. **Chimeras** are the the result of two or more biological sequences incorrectly joining together. This is often a result of PCR for a number of reasons. In `DADA2` specifically, chimeras are identified if they can be reconstructed from right and left segments from two or more "parent" sequences. The object `seqtab.nochim` will be our sequence table with the chimeras removed. Most of your reads should not be removed during this step. However, according to the `DADA2` [FAQ page](https://benjjneb.github.io/dada2/faq.html) if you have more than 25% of your reads removed, then it is likely that primers are still attached to your sequences. Be sure to remove these primers in the trimming step with either `bbduk`, `cutadapt`, or `trimmomatic` and begin the workflow again. 
 ```{r remove_chimeras, eval=FALSE}
-seqtab.nochim <- removeBimeraDenovo(seqtab2, method="consensus", multithread=TRUE, verbose=TRUE); save.image(file = "mydada_16S.Rdata")
+seqtab.nochim <- removeBimeraDenovo(seqtab2, method="consensus", multithread=TRUE, verbose=TRUE); save.image(file = "mydada_16S.V4.Rdata")
 # Chimeric sequences are identified if they can be exactly reconstructed by combining a left-segment and a right-segment from two more abundant “parent” sequences
 dim(seqtab.nochim)
 dim(seqtab)
@@ -486,7 +487,7 @@ sum(seqtab.nochim)/sum(seqtab2) # comparing reads after chimera removal over rea
 Time for a sanity check and see how many reads we have at this point in our workflow. This is a great place to see if we have lost any reads, and at which steps they were lost - which can really help us determine if we trimmed our reads to the appropriate length. If a lot of reads are lost, it is recommended to check if primers and adapters are still attached to your sequences, and the truncation length of your sequences for the filter and trimming step.
 ```{r read_tracking, eval=FALSE}
 getN <- function(x) sum(getUniques(x)) # function get number of unique sequences per object
-track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim)); save.image(file = "mydada_16S.Rdata")
+track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim)); save.image(file = "mydada_16S.V4.Rdata")
 # If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs) ;  sapply(dadaRs, getN), sapply(mergers, getN),
 head(track)
 
@@ -494,14 +495,14 @@ colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "n
 rownames(track) <- sample.names
 head(track)
 
-write.table(track,"16S_tracking_reads_dada2.txt",sep="\t",row.names=TRUE,col.names=TRUE); save.image(file = "mydada_16S.Rdata")
+write.table(track,"16S_tracking_reads_dada2.txt",sep="\t",row.names=TRUE,col.names=TRUE); save.image(file = "mydada_16S.V4.Rdata")
 ```
 ## Assign Taxonomy to ASVs
 Now it's time to assign taxonomic identities to our ASVs. Dr. Callahan utilizes the [naive Bayesian classifier](https://pubmed.ncbi.nlm.nih.gov/17586664/) his `assignTaxonomy` function, which is the same classifier used by the [Ribosomal Database Project](https://rdp.cme.msu.edu/) (RDP) for taxonomic assignment. For more information on how this classifier works, please read @Wang2007. 
 
 In order to assign the taxonomic IDs to our ASVs, we need to have a reference database FASTA file to use as our known training data. These training data with known references will help the classifier determine which taxa our ASVs belong to. Currently the options for reference databases include the latest versions of the **Silva** database (for 16S), the **Ribosomal Database Project** database (for 16S), and the **UNITE** database (which should be used specifically for ITS sequences). A **Green Genes** database file is also included (for 16S analyses), but Green Genes has not been updated in a long time and thus is not the best choice for our reference training dataset. Dr. Callahan has included these reference database files [here](https://benjjneb.github.io/dada2/training.html).
 ```{r assign_taxa_asv, eval=FALSE}
-taxa <- assignTaxonomy(seqtab.nochim, "/bigdata/aronsonlab/shared/DADA2_Silva_Files/silva_nr99_v138.1_wSpecies_train_set.fa.gz", multithread=TRUE); save.image(file = "mydada_16S.Rdata")
+taxa <- assignTaxonomy(seqtab.nochim, "/bigdata/aronsonlab/shared/DADA2_Silva_Files/silva_nr99_v138.1_wSpecies_train_set.fa.gz", multithread=TRUE); save.image(file = "mydada_16S.V4.Rdata")
 
 taxa.print <- taxa # Removing sequence rownames for display only
 rownames(taxa.print) <- NULL
@@ -558,7 +559,7 @@ saveRDS(asv_fasta, file = "16S.V4_ASV_Sequences_dada2_Robject.rds", ascii = FALS
         compress = TRUE, refhook = NULL)
 
 #### Save everything from global environment into .Rdata file
-save.image(file = "mydada_16S.Rdata")
+save.image(file = "mydada_16S.V4.Rdata")
 ```
 Personally, I like using R objects (file extension .rds) in my analyses. In order to import R objects into R, you can run `data.frame(readRDS("path/to/Robject.rds", refhook = NULL))` to create a data frame holding the contents of your R object file.
 
