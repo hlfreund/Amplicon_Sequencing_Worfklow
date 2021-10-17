@@ -742,15 +742,15 @@ bac.div.metadat <- merge(d.r_16s,metadata, by.x="SampleID", by.y="SampleID")
 head(bac.div.metadat)
 class(bac.div.metadat) # want data frame
 ```
-We can now use the data frame we made with our alpha diversity, species richness, and our metadata to create some nice figures. First want to ensure that the category of interest (i.e., in this example that will be "group") is the right `class` of variable for generating this figure. Because we are using a categorical identifier, it is wise for us to make sure that our `Category` variable is in the `factor` format.
+We can now use the data frame we made with our alpha diversity, species richness, and our metadata to create some nice figures. First want to ensure that the category of interest (i.e., in this example that will be "Category") is the right `class` of variable for generating this figure. Because we are using a categorical identifier, it is wise for us to make sure that our `Category` variable is in the `factor` format.
 ```{r div_fig_prep, eval=FALSE}
-unique(bac.div.metadat$Category) # see how many elements there are in the Group variable
+unique(bac.div.metadat$Category) # see how many elements there are in the Category variable
 bac.div.metadat$Category <- factor(bac.div.metadat$Category, levels = c("ClearCutSoil","Gopher","NoGopher","OldGrowth"))
 class(bac.div.metadat$Category)
 ```
 Now let's make some pretty figures with `ggplot2`! Using `ggplot2`, we can specify what type of plot to make, the color palette you'll use, the size(s) of your font, etc. If you're interested in everything that `ggplot2` can do, please check out this amazing `ggplot2` [Cheat Sheet](https://www.maths.usyd.edu.au/u/UG/SM/STAT3022/r/current/Misc/data-visualization-2.1.pdf). We are also using `ggpubr`, a wrapper for `ggplot2` that allows for easy manipulation and export of `ggplot` figures. For more information on `ggpubr`, please check out the package [website](https://rpkgs.datanovia.com/ggpubr/#:~:text=ggplot2%2C%20by%20Hadley%20Wickham%2C%20is,elegant%20data%20visualization%20in%20R.&text=The%20'ggpubr'%20package%20provides%20some,'%2D%20based%20publication%20ready%20plots).
 
-Here we are going to create box-and-whisker plots of our alpha diversity and species richness data. The first plot will display the alpha diversity across of our groups, and the second plot will display the species richness of these groups. The `y-axis` will show the Shannon diversity in the first plot, and the species richness in the second plot. For both plots, the `x-axis` will display the Group labels.
+Here we are going to create box-and-whisker plots of our alpha diversity and species richness data. The first plot will display the alpha diversity across of our groups, and the second plot will display the species richness of these groups. The `y-axis` will show the Shannon diversity in the first plot, and the species richness in the second plot. For both plots, the `x-axis` will display the Category labels.
 
 Each of the individual box-and-whisker plots will be assigned a different color based on the Category variable using the `$Category_col` variable we created earlier.
 ```{r alphadiv_fig, eval=FALSE}
@@ -767,7 +767,7 @@ ggsave(bac.a.div,filename = "Bacterial_alpha_diversity.png", width=12, height=10
 
 We observe the highest average Shannon diversity within the Clear Cut Soil category, followed by the Gopher category, then the No Gopher category, and the Old Growth category. Though this figure is helpful for comparing these categories to one another, we cannot really glean meaningful statistical inforamtion from this boxplot.
 
-Not only does `ggpubr` help us with arranging and saving figures, but we can also use some if its functions to add statistics directly onto our figures with ease. In the next code chunk we use a function called `stat_compare_means()` which allows you to compare different sets of samples to each other. Because we have already assigned our samples to Groups, we can compare the means across our multiple samples. 
+Not only does `ggpubr` help us with arranging and saving figures, but we can also use some if its functions to add statistics directly onto our figures with ease. In the next code chunk we use a function called `stat_compare_means()` which allows you to compare different sets of samples to each other. Because we have already assigned our samples to Categories, we can compare the means across our multiple samples. 
 
 We can compare the means of each sample to each other in a pair-wise fashion by using either a **T-test** (`t.test`) or a using a **Wilcoxon test** (`wilcox.test`), or compare the means across all of our samples at once using an **Analysis of Variance** aka ANOVA (`anova`) or a **Kruskal-Wallis test** (`kruskal.test`). For more information on how to use the `stat_compare_means()` function to add statistics to your plots, please see this [website](http://www.sthda.com/english/articles/24-ggpubr-publication-ready-plots/76-add-p-values-and-significance-levels-to-ggplots/).
 
