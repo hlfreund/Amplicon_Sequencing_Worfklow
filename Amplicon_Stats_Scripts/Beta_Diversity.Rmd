@@ -1,0 +1,241 @@
+---
+title: "Beta Diversity"
+author: "Author: Hannah Freund (hfreu002@ucr.edu)"
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`" 
+output:
+  html_document:
+    toc: true # table of content true
+    toc_depth: 3  # upto three depths of headings (specified by #, ## and ###)
+    number_sections: true  ## if you want number sections at each table header
+    theme: cosmo  # many options for theme, see here: https://www.datadreaming.org/post/r-markdown-theme-gallery/
+    highlight: pygments  # specifies the syntax highlighting style
+    code_folding: show
+    toc_float: true
+    collapsed: true
+    smooth_scroll: true
+fontsize: 15pt
+always_allow_html: yes
+bibliography: my_bib.bib
+---
+
+<style type="text/css">
+  body{
+  font-size: 13pt;
+}
+</style>
+
+<!--
+Render from R:
+rmarkdown::render("Amplicon_Workflow.Rmd", clean=TRUE, output_format="html_document")
+R
+
+Rendering from the command-line. To render to PDF format, use the argument setting: output_format="pdf_document".
+$ Rscript -e "rmarkdown::render('Amplicon_Workflow.Rmd', output_format='html_document', clean=TRUE)"
+
+Add logo:
+htmltools::img(src = knitr::image_uri("mylogo.png"), 
+               alt = 'logo', 
+               style = 'position:absolute; top:0; center:0; padding:10px;')
+-->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Beta Diversity {#beta-div-section}
+### Data Transformation
+Before going any further, we should transform our data. Data transformation helps us to better interpret our data by changing the scales in which we view our data, as well as reducing the impact of skewed data and/or outliers in our data set. We can also perform a transformation that normalizes our data, aka changing the distribution of our data to be a normal (i.e., Gaussian) distribution, which is useful for running certain statistical tests that assume normality (like T-tests, ANOVAs). For more on why you should transform your data and what kind of transformations are out there, check out the resources included in this very helpful [Medium article](https://medium.com/analytics-vidhya/a-guide-to-data-transformation-9e5fa9ae1ca3). I have also found this [Medium article](https://medium.com/@kyawsawhtoon/log-transformation-purpose-and-interpretation-9444b4b049c9#:~:text=Log%20transformation%20is%20a%20data,on%20the%20natural%20log%20transformation.) on log transformations helpful as well.
+
+Two useful transformations I have seen used are the **variance stabilizing transformation** (i.e, **VST**) and the  **centered log-ratio** transformation (i.e, **CLR**). For information on how to employ this particular transformation, please check out this [tutorial](https://astrobiomike.github.io/amplicon/dada2_workflow_ex#beta-diversity) by the legendary bioinformatician [Dr. Mike Lee](https://astrobiomike.github.io/research/). Though I won't be using the VST transformation, I have not found any literature saying that the CLR transformation is better than VST. The CLR transformation appears to be popular among statisticians, which is why I am choosing to go this route.
+
+We will use the `microbiome` package [@Lahti2019] to CLR transform our count data for creating clustering dendrograms and ordinations. The CLR transformation is recommended in the paper "Microbiome Datasets Are Compositional: And This Is Not Optional" by @Gloor2017, which proposes that microbiome data sets are compositional, meaning they describe relationships between multiple components. @Gloor2017 argues that the reason that CLR transformations are ideal for compositional data is because 1. ratio transformations are useful for detecting relationships in both count data and proportion data, and 2. because log-ratios specifically make the data symmetric in a log space.
+
+A requirement for the `microbiome::transform` function is that it requires a `phyloseq` object (i.e., a type of object created by the `phyloseq` package; @McMurdie2013) as input. Let's create our phyloseq object with our `bac.ASV_counts` matrix and add a small pseudocount to the cells in our matrix containing `0s`. It's important to change all of the 0s to a very small number so that the log of 0 is not taken in our transformation (@Quinn2021). To better understand how CLR transformation works and why its a useful transformation for microbiome data, watch this great [YouTube video](https://www.youtube.com/watch?v=fQPCeV4MUe4) created by [Dr. Thomas Quinn](https://tpq.github.io/) and read "Normalization and microbial differential abundance strategies depend upon data characteristics" by @Weiss2017. For more information on the pros and cons of the CLR transformation, please read "A field guide for the compositional analysis of any-omics data" by @Quinn2019. 
+```{r clr_transformation, eval=FALSE}
+# turning bac.ASV_counts into phyloseq object called ASV
+## bac.ASV_counts[,-ncol(bac.ASV_counts)] allows us to drop the last column in the data frame, which in this case is a column of ASV IDs
+ASV<-otu_table(as.matrix(bac.ASV_counts[,-ncol(bac.ASV_counts)]), taxa_are_rows = TRUE)
+head(ASV)
+class(ASV) # phyloseq otu_table object
+
+# add pseudocount bfore transformation!
+ASV[ASV==0]<-0.001
+head(ASV)
+
+# CLR transformation on phyloseq object
+asv_clr<-microbiome::transform(ASV, "clr")
+head(asv_clr)
+```
+
+### Hierarchical Clustering
+Now that we have our transformed ASV counts, we can create a Euclidean distance matrix that will describe how close (aka similar) our samples are to each other based on their microbial composition. The Euclidean distance between CLR-Transformed compositional data is known as **Aitchison Distance** [@Quinn2018].
+```{r clustering_exposure, eval=FALSE}
+# create CLR Sample x Species matrix for input into dist()
+b.clr<-as.matrix(t(asv_clr))
+
+# calculate our Euclidean distance matrix using CLR data (aka Aitchison distance)
+b.euc_dist <- dist(b.clr, method = "euclidean")
+
+# creating our hierarcical clustering dendrogram
+b.euc_clust <- hclust(b.euc_dist, method="ward.D2")
+
+# let's make it a little nicer...
+b.euc_dend <- as.dendrogram(b.euc_clust, hang=0.1)
+b.dend_cols <- as.character(metadata$Category_col[order.dendrogram(b.euc_dend)])
+labels_colors(b.euc_dend) <- b.dend_cols
+
+png(file="16S_CLR_cluster_Category.png",width = 1000, height = 900, res=100)
+par(cex=1)
+plot(b.euc_dend, ylab="CLR Euclidean Distance") + title(main = "Bacteria/Archaea Clustering Dendrogram", sub = "Colored by Sample Category", cex.main = 2, font.main= 2, cex.sub = 0.8, font.sub = 3)
+legend("topright",legend = c("Clear Cut Soil", "Gopher", "No Gopher", "Old Growth"),cex=.8,col = c("#D00000", "#f8961e", "#4ea8de", "#283618"),pch = 15, bty = "n")
+dev.off()
+```
+<center>
+![](amplicon_workflow/16S_CLR_cluster_Category.png)
+</center>
+<div align="center">Figure 9: Hierarchical Clustering (with Centered Log-Ratio Transformed Data)</div></br>
+
+Though there are some samples not clustered within their sample categories, overall it appears that samples from specific categories form distinct clusters. This indicates thats generally, samples from the same category have similar microbial community composition. We can also see that most of the samples in the Clear Cut Soil category are more similar to the Gopher and No Gopher samples compared to the Old Growth samples. Though this dendogram is helpful, it's not as informative as other visualizations we can do. 
+
+### Principal Coordinate Analysis (PCoA)
+To learn more about how these sample categories' microbiomes compare to one another, we can use our Euclidean distance matrix (created from CLR transformed ASV counts) to generate an ordination known as **Principal Coordinate Analysis**, aka a **PCoA**.
+
+I am not going to get into the math behind a PCoA, but you can learn more by watching this excellent [StatQuest YouTube video](https://youtu.be/GEn-_dAyYME) and this helpful [link](https://mb3is.megx.net/gustame/dissimilarity-based-methods/principal-coordinates-analysis) that describes what a PCoA is and its uses. If you're interested in learning more about ordinations in general and the impacts they can have on microbiome data, please read "Uncovering the Horseshoe Effect in Microbial Analyses" by @Morton2017.
+
+Generally a PCoA is used at looking at how similar your samples are to each other, and the variability exhibited by your samples, in a reduced dimensional space. The closer two points are in your ordination, the more similar they are. PCoAs yield multiple axes (i.e., principal components) that capture the variation within your data set and are associated with certain values (i.e., **eigenvalues**) that represent to the magnitude of the variation for each axis. These eigenvalues are relative representations of how important each axis of variation is for describing the data set.
+
+PCoAs were developed so that we can create these ordinations using distances that are NOT Euclidean, for example like Bray-Curtis dissimilarity distances. PCoAs come from **Principal Component Analysis**, which is specifically used for Euclidean distances. For more information on PCAs, check out this [StatQuest YouTube video](https://youtu.be/FgakZw6K1QQ) as well as this [tutorial](https://ourcodingclub.github.io/tutorials/ordination/) that compares PCAs to PCoAs.
+
+Let's generate our PCoA and a PCA and check out the proportion of variance explained by our axes. The reason I am showing you how to generate both is because a PCoA using Euclidean distances is equivalent to a PCA. This is a useful way to confirm that our data is actually Euclidean in nature. 
+```{r pcoa_clr,eval=FALSE}
+# let's use our Euclidean distance matrix from before to generate a PCoA
+b.pcoa <- pcoa(b.euc_dist)
+# Variance explained by each axis is the Relative eigen (values$Relative_eig)
+b.pcoa$values$Relative_eig
+
+b.pca = prcomp(b.clr)
+# Variance explained by each axis is the Proportion of Variance
+b.pca.sum<-summary(b.pca)
+b.pca.sum$importance 
+```
+The first axis (PC1) of variation describes 8.94% of the variance in the entire data set. The second axis (PC2) describes 5.69% of the variation. Our PC axes generated by our PCoA are equivalent to our axes generated by the PCA, which is to be expected using Euclidean distances. The first 2-3 axes describe the greatest amount of variation in the data set, and are included in the visualization of the PCoA. 
+
+To visualize our PCoA with `ggplot2`, we have to extract the principal coordinates for each sample across our axes of variation and combine these values with our metadata. Then we can make a PCoA ordination and color each sample ID with our variable of interest (in this case, the Sample Category, aka `metadata$Category`). We can also include the relative variation for each axis in our x-axis and y-axis labels. 
+```{r visualize_pcoa, eval=FALSE}
+# extract principal coordinates
+b.pcoa.vectors<-data.frame(b.pcoa$vectors)
+b.pcoa.vectors$SampleID<-rownames(b.pcoa$vectors)
+
+# merge pcoa coordinates w/ metadata
+b.pcoa.meta<-merge(b.pcoa.vectors, metadata, by.x="SampleID", by.y="SampleID")
+head(b.pcoa.meta)
+
+b.pcoa$values$Relative_eig # pull out relative variation % to add to axes labels
+
+# create PCoA ggplot fig
+pcoa1<-ggplot(b.pcoa.meta, aes(x=Axis.1, y=Axis.2)) +geom_point(aes(color=factor(Category)), size=4)+theme_bw()+labs(title="PCoA: Bacteria/Archaea",subtitle="Using Centered-Log Ratio Data",xlab="Axis 1", ylab="Axis 2",color="Sample Category")+theme_classic()+ theme(axis.title.x = element_text(size=15),axis.title.y = element_text(size=15),legend.title.align=0.5, legend.title = element_text(size=15),axis.text = element_text(size=12),axis.text.x = element_text(vjust=1),legend.text = element_text(size=12),,plot.title = element_text(size=17))+guides(shape = guide_legend(override.aes = list(size = 5)))+scale_color_manual(name ="Sample Category", labels=c("ClearCutSoil"="Clear Cut Soil", "Gopher"="Gopher", "NoGopher"="No Gopher", "OldGrowth"="Old Growth"),values=unique(b.pcoa.meta$Category_col[order(b.pcoa.meta$Category)])) +xlab("Axis 1 [8.94%]") + ylab("Axis 2 [5.69%]")
+
+ggsave(pcoa1,filename = "16S_pcoa_CLR.png", width=12, height=10, dpi=600)
+```
+<center>
+![](amplicon_workflow/16S_pcoa_CLR.png)
+</center>
+<div align="center">Figure 10: Principal Coordinates Analysis, Colored by Sample Category</div></br>
+
+From this PCoA we can tell that the microbial community composition in the Old Growth samples are similar to one another, forming a tight cluster in the PCoA (points in dark green). The microbial composition of the Clear Cut Soil samples are also similar to one another (points in red). Interestingly, the Gopher and No Gopher samples cluster together, indicating that their microbial communities are similar to each other, regardless of whether a gopher was introduced to the soil or not. It is important to keep in mind that though we see distinct clusters by sample category, the variation explained by this variable is quite low (Axis 1 - 8.94%, Axis 2 - 5.59%). 
+
+So this information is helpful, but we are not sure if our categories are significantly similar/dissimilar from each other. To do this, we first need to check the dispersion (aka variance) of the composition data within each group to see if we can even compare these groups to each other. Basically we are finding the spatial median or the *centroid* of each group in multivariate space, and calculating the distance from each point to the centroid within a respective group or category. The actual distances are reduced to principal coordinates (as is done in a PCA or PCoA) before the distances from each group are compared. We then can use an ANOVA as well as a **Tukey's Honest Signifcant Difference Test** (aka Tukey's HSD) to statistically compare the group dispersions.
+
+To check out our group dispersions and whether or not they are homogeneous (equal/similar to each other in their variance), we will use the `betadisper()` function from the `vegan` package. We can then compare the axes of dispersion with the `anova()` function and compare the spatial means with the `TukeyHSD()` function.
+```{r betadisper_compare, eval=FALSE}
+# create CLR Sample x Species matrix for input into dist()
+b.clr<-as.matrix(t(asv_clr))
+rownames(b.clr)
+rownames(metadata)
+# reorder the transformed ASV table to match order of metadata data frame
+b.clr=b.clr[rownames(metadata),] # reorder both dfs by row names
+# sanity check
+rownames(b.clr)
+rownames(metadata)
+
+# calculate our Euclidean distance matrix using CLR data (aka Aitchison distance)
+b.euc_dist <- dist(b.clr, method = "euclidean")
+b.disper<-betadisper(b.euc_dist, metadata$Category)
+b.disper
+
+permutest(b.disper, pairwise=TRUE) # compare dispersions to each other via permutation test to see significant differences in dispersion by pairwise comparisons
+
+anova(b.disper) # p = 0.0001394 --> reject the Null H, spatial medians are significantly difference across Categories
+
+TukeyHSD(b.disper) # tells us which Category's dispersion MEANS are significantly different than each other
+```
+The ANOVA results tell us that our dispersions by category are significantly different than each other (p=0.0001394), meaning the variance within each category is not homogenous. We can visualize this comparison as well via an ordination (calculated by `betadisper()`) and a boxplot based on the distance to the centroid for each group.
+```{r visualize_dispersion1, eval=FALSE}
+# Visualize dispersions
+png('pcoa_betadispersion.png',width = 700, height = 600, res=100)
+plot(b.disper,main = "Centroids and Dispersion based on Aitchison Distance", col=colorset1$Category_col)
+dev.off()
+```
+<center>
+![](amplicon_workflow/pcoa_betadispersion.png)
+</center>
+<div align="center">Figure 11a: Principal Coordinates Analysis w/ `betadisper()`. Colored by Sample Category </div></br>
+```{r visualize_dispersion2, eval=FALSE}
+png('boxplot_centroid_distance.png',width = 700, height = 600, res=100)
+boxplot(b.disper,xlab="Sample Category", main = "Distance to Centroid by Category", sub="Based on Aitchison Distance", names=c("Clear Cut Soil", "Gopher", "No Gopher", "Old Growth"), col=colorset1$Category_col)
+dev.off()
+```
+<center>
+![](amplicon_workflow/boxplot_centroid_distance.png)
+</center>
+<div align="center">Figure 11b: Distance to Centroid of Dispersion. Colored by Sample Category</div></br>
+
+The reason that our dispersion results are problematic is that if we try to compare the groups using a **Permutational Analysis of Variance** (aka a **PERMANOVA**), the significant differences we may see between groups could be attributed to their unequal variances (i.e., dispersion effects) rather than actual differences in the community compositions by category.
+
+### PERMANOVA w/ Aitchison Distance
+
+A PERMANOVA is similar to an ANOVA in that both analyses compare differences between groups (using *sum-of-squares*), but a PERMANOVA runs multiple permutations to compare these *distances* to each other - whereas an ANOVA is comparing group *averages* to each other without the use of permutations. Another difference is that while ANOVAs assume that the data is normally distributed, the PERMANOVA assumes that the groups have equal variance (dispersion). For more information on PERMANOVAs and comparing group variances, check out this very helpful [link](https://archetypalecology.wordpress.com/2018/02/21/permutational-multivariate-analysis-of-variance-permanova-in-r-preliminary/) by [Dr. Joshua Ebner](https://scholar.google.com/citations?user=0U4m9BUAAAAJ&hl=en).
+
+Even though we should not run a PERMANOVA with these data, let's go over how we would run a PERMANVOA. **The most crucial thing about running a PERMANOVA in R is that your feature table and your metadata need to be in the same order by row!** The program does not know to match up sample IDs or labels to each other, so you have to confirm that your data frames are arranged in the same way by row before running the PERMANOVA. We can then run our PERMANOVA including multiple variables of interest. We can see if there are interactions between multiple variables and our compositional data respectively with `+` (i.e, `var1 + var2`), or we can check for interactions between our variables and our composition data with `*` (i.e, `var1 * var2`).
+```{r permanova_practice, eval=FALSE}
+# check your rownames and the order of the rownames for ordering step
+rownames(b.clr)
+rownames(metadata)
+# in case you need to reorder
+b.clr=b.clr[rownames(metadata),]
+# sanity check
+rownames(b.clr)
+rownames(metadata)
+
+# PERMANOVA requires assumption of homogenous within-group disperions to ensure observed differences in groups are real
+perm1<-adonis2(b.clr ~ Category, data = metadata, permutations = 999, method="euclid", by='terms') # looks for interactions between predictor variables
+perm1
+
+perm2<-adonis2(b.clr ~ Category*layer, data = metadata, permutations = 999, method="euclid", by='terms')
+# * -> for interactions between predictor variables; + -> interactions with multiple variables but not between them or combined interactions
+perm2
+adonis2(b.clr ~ Category+layer, data = metadata, permutations = 999, method="euclid", by='terms')
+
+# export PERMANOVA results to csv
+perm1_results<-data.frame(DF=perm1$Df, SumofSqs=perm1$SumOfSqs, R2=perm1$R2, F=perm1$F, p=perm1$`Pr(>F)`)
+rownames(perm1_results)<-rownames(perm1)
+perm1_results
+write.csv(perm1_results,"16S_PERMANOVA_Results.csv",row.names=TRUE)
+
+# save PERMANOVA results in a nice table
+tab <- ggtexttable(perm1_results, theme = ttheme("light"))
+tab2<- tab %>%
+  tab_add_title(text = "PERMANOVA Results: Composition ~ Category", face = "bold", padding = unit(1, "line")) %>%
+  tab_add_footnote(text = "Using Euclidean Distance of CLR-Transformed Data (Aitchison Distance)", size = 10, face = "italic")
+
+# save table as png
+png('permanova_table_test.png',width = 700, height = 600, res=200)
+tab2
+dev.off()
+```
+<center>
+![](amplicon_workflow/permanova_results_screenshot.png)
+</center>
+<div align="center">Figure 12: Table of PERMANOVA Results (by Category)</div></br>
+
+As predicted by the `betadisper()` results, we are seeing a significant difference in community composition between our groups. Again, for this data set we can't really know if these differences are meaningful because the within-group disperions (aka variances) are NOT homogenous - so the significance we are seeing here is likely due to dispersion effects rather than real differences between groups. 
