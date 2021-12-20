@@ -8,6 +8,7 @@ To follow this workflow entirely, you must have the following:
 - some bash experience
 - demultiplexed sequence data
 
-To cite this workflow, please use the following DOI:
+To cite this workflow, please use the following:
+
 [![DOI](https://zenodo.org/badge/414102702.svg)](https://zenodo.org/badge/latestdoi/414102702)
 
