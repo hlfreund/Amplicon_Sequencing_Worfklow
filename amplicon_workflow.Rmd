@@ -1,21 +1,21 @@
 ---
 title: "Amplicon Analysis Workflow"
-author: "Author: Hannah Freund (hfreu002@ucr.edu)"
-date: "Last update: `r format(Sys.time(), '%d %B, %Y')`" 
+author: 'Author: Hannah Freund (hfreu002@ucr.edu)'
+date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
-    toc: true # table of content true
-    toc_depth: 3  # upto three depths of headings (specified by #, ## and ###)
-    number_sections: true  ## if you want number sections at each table header
-    theme: cosmo  # many options for theme, see here: https://www.datadreaming.org/post/r-markdown-theme-gallery/
-    highlight: pygments  # specifies the syntax highlighting style
     code_folding: show
-    toc_float: true
-    collapsed: true
-    smooth_scroll: true
+    collapsed: yes
+    highlight: pygments
+    number_sections: yes
+    smooth_scroll: yes
+    theme: cosmo
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
 fontsize: 15pt
+bibliography: mybib.bib
 always_allow_html: yes
-bibliography: my_bib.bib
 ---
 
 <style type="text/css">
@@ -29,6 +29,8 @@ Render from R:
 rmarkdown::render("Amplicon_Workflow.Rmd", clean=TRUE, output_format="html_document")
 R
 
+Note: if you render as a PDF then try to render a website, change the date format above (see here https://stackoverflow.com/questions/39415294/avoid-yaml-header-change-when-switching-knitr-output-format)
+
 Rendering from the command-line. To render to PDF format, use the argument setting: output_format="pdf_document".
 $ Rscript -e "rmarkdown::render('Amplicon_Workflow.Rmd', output_format='html_document', clean=TRUE)"
 
@@ -39,6 +41,7 @@ htmltools::img(src = knitr::image_uri("mylogo.png"),
 -->
 
 ```{r setup, include=FALSE}
+#options(tinytex.verbose = TRUE)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 # Background
@@ -46,7 +49,7 @@ This is a tutorial on how to process your 16S ITS1/ITS2 amplicon sequences and i
 
 To create this tutorial, I have assembled scripts I've used to analyze 16S data provided by Dr. Emma Aronson's lab. The data I am working with to create this workflow comes from a project that examined soil microbial community composition in Mount Saint Helens. The target region was the V4 region within the 16S gene, and sequencing was performed with an Illumina MiSeq (2x300). 
 
-You can find all of the scripts used in this workflow in this [repository](https://github.com/hlfreund/Amplicon_Sequencing_Worfklow).
+**You can find all of the scripts used in this workflow in this [GitHub repository](https://github.com/hlfreund/Amplicon_Sequencing_Worfklow) or you can download it from SourceForge, which is linked in the [About Me](#about-me) section.**
 
 This tutorial would not have been possible without [Dr. Benjamin Callahan's](https://callahanlab.cvm.ncsu.edu/) `DADA2` [program](https://github.com/benjjneb/dada2) [@Callahan2016] and [tutorials](https://benjjneb.github.io/dada2/tutorial.html). Additionally, I would like to especially thank [Dr. Mike Lee](https://astrobiomike.github.io/research/) for his guidance, his patience, and his Happy Belly Bioinformatics tutorial called [**Amplicon Analysis**](https://astrobiomike.github.io/amplicon/dada2_workflow_ex#removing-likely-contaminants) tutorial [@Lee2019].
 
@@ -61,6 +64,8 @@ Additionally, you will need to change your path to each of these programs depend
 
 ## Submitting Scripts as Jobs with Slurm
 If you are unsure as to how to set up the script for submitting on your HPCC, check the code chunk below. This is the information I use when submitting a job to our Slurm system. Again, this is specifically for a system that uses the Slurm scheduler. For more information on what the arguments mean and how to set up your job submissions, please refer to this handy [cheatsheet](https://slurm.schedmd.com/pdfs/summary.pdf) made by Slurm. 
+
+**NOTE**: If you are running these scripts on an HPCC, please load the module you need before running, or add `load module name_of_module` to your script before you call on the program you want to use.
 ```{bash slurm_job_prep, eval=FALSE}
 #!/bin/bash -l
 
@@ -110,9 +115,7 @@ Typically your samples will be returned to you already demultiplexed. However, i
 ### Check the quality of your sequences with `FastQC`
 It's always a good idea to check the quality of your sequences before you start your analysis, regardless of the type of sequences they are (metagenomes, RNA-seq data, etc). `FastQC` [@Andrews] provides a comprehensive report on the quality of your sequences and is helpful for the following: identifying primers or adapters still attached to your sequences; determining the quality of your reverse reads; etc. You can also use the FastQC reports to determine if you should attempt to merge your forward and reverse reads, or just proceed with only the forward reads.
 ```{bash fastqc_check, eval=FALSE}
-# Set "today" variable to be date to help keep track of file generation
-# * I always create a 'today' variable just in case I want to keep track of exactly when I created certain files and directories
-today=$(date "+%m.%d.%y") # date is the command to get today's date, and the "+%m_%d_%y" will print it in month_day_year format
+# my 16S and ITS2 sequences are in separate directories, which I why I loop through them separately below
 
 # create a directory to store your FastQC results in
 if [[ ! -d ./FastQC_Results ]]; then
@@ -221,7 +224,7 @@ The following image shows a sample eestats2 report. For this specific sample, th
 <div align="center">Figure 3: eestats Report Example</div></br>
 For more information on the `eestats2` programs by [USEARCH](https://www.drive5.com/usearch/), please read the documentation [here](https://www.drive5.com/usearch/manual/cmd_fastq_eestats2.html).
 
-## Trim sequences and cut adapters, primers, etc
+## Decontaminate & Trim sequences and cut adapters, primers, etc
 There are plenty of programs out there that can be used for trimming, and the following three are the most popular for amplicon analyses: [`cutadapt`](https://cutadapt.readthedocs.io/en/stable/), [`trimmomatic`](http://www.usadellab.org/cms/?page=trimmomatic), and [`bbduk`](https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/bbduk-guide/) [@Bushnell]. All of these programs are reputable, but I personally like the `bbduk`, and will use this tool for trimming and adapter removal. 
 
 Before I trim my sequences, I refer to the FastQC reports to find out exactly which adapters I should remove from my sequences. For example, when looking at the adapter content portion of the FastQC report above, I can see that the Nextera Transposase Sequence is still present in that particular sample. Thankfully Illumina shares their adapter sequences on their [website](https://support-docs.illumina.com/SHARE/AdapterSeq/Content/SHARE/AdapterSeq/AdapterSequencesIntro.htm), allowing us to easily find common adapters in sequences, like the [Nextera Transposase Sequence](https://support-docs.illumina.com/SHARE/AdapterSeq/Content/SHARE/AdapterSeq/Nextera/SequencesNXTILMPrepAndPCR.htm) for example.
@@ -230,11 +233,12 @@ I also know that with the sequences I am analyzing, the PCR primers are still at
 
 It is recommended to check the overrepresented sequences from the FastQC report to see if there are contaminating sequences present in your data. I suggest taking the most frequent overrepresented sequence and running it through [BLASTn](https://blast.ncbi.nlm.nih.gov/Blast.cgi?PROGRAM=blastn&BLAST_SPEC=GeoBlast&PAGE_TYPE=BlastSearch) if the source of this overrepresented sequence says "No Hit" (meaning that FastQC cannot attribute this sequence to its list of adapter sequences). If the sequence comes up as a contaminant (i.e., a different gene than the amplicon you're looking at) or adapter/primer of some kind, you can add this to the `literal=` flag in `bbduk` to remove the contaminant.
 
-In addition to removing adapter and primer sequences using the  the `literal=` flag, I also include a reference file provided by `bbduk` (referenced in the `ref=` flag) that contains all of the Illumina TruSeq adapters. The sequences in the reference file, in addition to the given adapters and primers, will be removed from the sequences. Below the shell script is a description of all of the flags used by `bbduk` and exactly what they mean.
+In addition to removing adapter and primer sequences using the  the `literal=` flag, I also include a reference file provided by `bbduk` (referenced in the `ref=` flag) that contains all of the Illumina TruSeq adapters. The sequences in the reference file, in addition to the given adapters and primers, will be removed from the sequences. Additionally, bbduk decontaminates sequences by matching kmers (aka reads of a specific length k) to reference genomes. If the kmers match the reference genome, then the kmer is kept. The longer the kmer, the higher the specificity - but there is a limit to this, seeing as the likelihood that long kmers are shared across multiple reads is unlikely. If your kmer length is too short, you could be keeping sequences that are adapters, primers, etc by accident (this is why using the literal sequence flag and the adapter reference file is helpful in `bbduk`). 
 
-For more information on the `bbduk` flags, please see the `bbduk` [documentation](https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/bbduk-guide/). 
+Below the shell script is a description of all of the flags used by `bbduk` and exactly what they mean. For more information on the `bbduk` flags, please see the `bbduk` [documentation](https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/bbduk-guide/). 
 ```{bash bbduk_trim, eval=FALSE}
 path=/path/to/sequences/here # replace with the path to your files
+# my sequence files are in $path/16S_Seqs/ -- see for loop below
 
 if [[ ! -d ./Trimmed_Seqs ]]; then # creating directory to store trimmed sequences in
     mkdir Trimmed_Seqs
@@ -244,12 +248,12 @@ if [[ ! -d ./Trimmed_Seqs/16S_Trimmed ]]; then # creating directory for specific
     mkdir Trimmed_Seqs/16S_Trimmed
 fi
 
-for i in 16S_Seqs/*_R1.fastq;
+for i in ${path}/16S_Seqs/*_R1.fastq;
 do
     f=$(basename $i)
     SAMPLE=${f%_R*}
     
-    bbduk.sh -Xmx10g in1=${path}/16S_Seqs/${SAMPLE}_R1.fastq in2=${path}/16S_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R2_clean.fastq literal=TCGTCGGCAGCGTCAGATGTGTATAAGAGACAG,GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG ref=/bigdata/aronsonlab/shared/bbmap_resources/adapters.fa rcomp=t ktrim=r k=23 maq=10 minlength=200 mink=11 hdist=1 tpe tbo
+    bbduk.sh -Xmx10g in1=${path}/16S_Seqs/${SAMPLE}_R1.fastq in2=${path}/16S_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R2_clean.fastq literal=TCGTCGGCAGCGTCAGATGTGTATAAGAGACAG,GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG ref=/bigdata/aronsonlab/shared/bbmap_resources/adapters.fa rcomp=t ktrim=r k=23 maq=10 minlength=200 mink=13 hdist=1 tpe tbo
     
 done
 
@@ -1413,8 +1417,10 @@ My name is Hannah and my pronouns are they/them. I am currently a PhD Student at
 If you have any questions regarding this workflow and the scripts I used, do not hesitate to contact [me](mailto:hfreu002@ucr.edu?subject=Amplicon Workflow). Or, if you'd like to talk bioinformatics and all things 'omics, I would love that too!
 
 <div align="center">**Thank you so much for checking out my workflow!**</div>
+
+
 <center>
-[![website](amplicon_workflow/mylogo.png)](https://hlfreund.github.io/)
+[![Download AmpliconSequencingWorfklow](https://a.fsdn.com/con/app/sf-download-button)](https://sourceforge.net/projects/amplicon-sequencing-worfklow/files/latest/download)
 </center>
 
 # References
