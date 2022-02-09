@@ -24,22 +24,27 @@ if [[ ! -d ./Trimmed_Seqs/16S_Trimmed ]]; then
     mkdir Trimmed_Seqs/16S_Trimmed
 fi
 
+if [[ ! -d ./Trimmed_Seqs/ITS2_Trimmed ]]; then
+    mkdir Trimmed_Seqs/ITS2_Trimmed
+fi
+
 # trim lengths based on amplicons that are 300 bp
 for i in 16S_Seqs/*_R1.fastq;
 do
     f=$(basename $i)
     SAMPLE=${f%_R*}
     
-    bbduk.sh -Xmx10g in1=${path}/16S_Seqs/${SAMPLE}_R1.fastq in2=${path}/16S_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R2_clean.fastq literal=TCGTCGGCAGCGTCAGATGTGTATAAGAGACAG,GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG ref=/bigdata/aronsonlab/shared/bbmap_resources/adapters.fa ftl=5 ftr=265 rcomp=t ktrim=r k=23 maq=10 minlength=250 mink=11 hdist=1 tpe tbo
+    bbduk.sh -Xmx10g in1=${path}/16S_Seqs/${SAMPLE}_R1.fastq in2=${path}/16S_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R2_clean.fastq  ref=/bigdata/aronsonlab/shared/bbmap_resources/adapters.fa ftl=15 ftr=285 rcomp=t ktrim=r k=23 maq=10 minlength=250 mink=11 hdist=1 tpe tbo
     
 done
 
+# NOTE: remember that for ITS2, trimming should just be about removing adapters and potentially poor quality reads, but not trying to get a specific length due to the variability in the length of this locus
 for i in ITS2_Seqs/*_R1.fastq;
 do
     f=$(basename $i)
     SAMPLE=${f%_R*}
     
-    bbduk.sh -Xmx10g in1=${path}/ITS2_Seqs/${SAMPLE}_R1.fastq in2=${path}/ITS2_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/ITS2_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/ITS2_Trimmed/${SAMPLE}_R2_clean.fastq literal=TCGTCGGCAGCGTCAGATGTGTATAAGAGACAG,GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG ref=/bigdata/aronsonlab/shared/bbmap_resources/adapters.fa ftl=15 ftr=290 rcomp=t ktrim=r k=23 maq=10 minlength=260 mink=11 hdist=1 tpe tbo
+    bbduk.sh -Xmx10g in1=${path}/ITS2_Seqs/${SAMPLE}_R1.fastq in2=${path}/ITS2_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/ITS2_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/ITS2_Trimmed/${SAMPLE}_R2_clean.fastq ref=/bigdata/aronsonlab/shared/bbmap_resources/adapters.fa ftl=15 ftr=290 rcomp=t ktrim=r k=23 maq=10 minlength=260 mink=11 hdist=1 tpe tbo
     
 done
 
@@ -50,6 +55,7 @@ done
 #/Volumes/HLF_SSD/Aronson_Lab_Data/bbmap/bbduk.sh in1=/Volumes/HLF_SSD/Aronson_Lab_Data/SaltonSea_POW/EA_Pool-POW_1-1a_S28_L001_R1_001_clean1.fastq in2=EA_Pool-POW_1-1a_S28_L001_R2_001_clean1.fastq out1=/Volumes/HLF_SSD/Aronson_Lab_Data/SaltonSea_POW/EA_Pool-POW_1-1a_S28_L001_R1_001_clean.fq out2=/Volumes/HLF_SSD/Aronson_Lab_Data/SaltonSea_POW/EA_Pool-POW_1-1a_S28_L001_R2_001_clean.fq  literal=ACTGCGAA,TTCGCAGT rcomp=t ktrim=r k=23 mink=11 hdist=1 maq=10 minlen=51 trimq=20 tpe tbo
 
 # More info here: https://jgi.doe.gov/data-and-tools/bbtools/bb-tools-user-guide/bbduk-guide/
+# also http://seqanswers.com/forums/showthread.php?t=42776
 # ref ---> file provided by bbduk that holds collection of Illumina TruSeq adapters
 # literal=(sequence here) ---> literal adapter sequences to remove; "N" represents any base -- in this case, they are indexes within the adapters
 # rcomp=t ---> Rcomp looks for kmers and their reverse-complements, rather than just forward kmer, if set to true
@@ -77,3 +83,5 @@ done
 # Note that it is impossible to do kmer matching for reference sequences that are shorter than K.
 # When kmer filtering, you can specify a kmer length greater than 31 (such as k=40) for even higher specificity.
 # For k=40, BBDuk will consider a read to match the reference if there are 10 consecutive 31-mer matches. This is not exactly the same as actually matching 40-mers, but is very similar.
+# Example Usage
+## bbduk.sh -Xmx10g in1=${path}/16S_Seqs/${SAMPLE}_R1.fastq in2=${path}/16S_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R2_clean.fastq literal=TCGTCGGCAGCGTCAGATGTGTATAAGAGACAG,GTCTCGTGGGCTCGGAGATGTGTATAAGAGACAG ref=/bigdata/aronsonlab/shared/bbmap_resources/adapters.fa ftl=5 ftr=265 rcomp=t ktrim=r k=23 maq=10 minlength=250 mink=11 hdist=1 tpe tbo
