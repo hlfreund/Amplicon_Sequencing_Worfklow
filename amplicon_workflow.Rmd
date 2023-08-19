@@ -1,6 +1,6 @@
 ---
 title: "Amplicon Analysis Workflow"
-author: 'Author: Hannah Freund (hfreu002@ucr.edu)'
+author: 'Author: Linton Freund (hfreu002@ucr.edu)'
 date: "Last update: `r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
@@ -49,9 +49,11 @@ This is a tutorial on how to process your 16S ITS1/ITS2 amplicon sequences and i
 
 To create this tutorial, I have assembled scripts I've used to analyze 16S data provided by Dr. Emma Aronson's lab. The data I am working with to create this workflow comes from a project that examined soil microbial community composition in Mount Saint Helens. The target region was the V4 region within the 16S gene, and sequencing was performed with an Illumina MiSeq (2x300). 
 
-**You can find all of the scripts used in this workflow in this [GitHub repository](https://github.com/hlfreund/Amplicon_Sequencing_Worfklow) or you can download it from SourceForge, which is linked in the [About Me](#about-me) section.**
-
 This tutorial would not have been possible without [Dr. Benjamin Callahan's](https://callahanlab.cvm.ncsu.edu/) `DADA2` [program](https://github.com/benjjneb/dada2) [@Callahan2016] and [tutorials](https://benjjneb.github.io/dada2/tutorial.html). Additionally, I would like to especially thank [Dr. Mike Lee](https://astrobiomike.github.io/research/) for his guidance, his patience, and his Happy Belly Bioinformatics tutorial called [**Amplicon Analysis**](https://astrobiomike.github.io/amplicon/dada2_workflow_ex#removing-likely-contaminants) tutorial [@Lee2019].
+
+**You can find all of the scripts used in this workflow in this [GitHub repository](https://github.com/hlfreund/Amplicon_Sequencing_Worfklow) or you can download it from SourceForge, which is linked in the [About Me](#about-me) section.** 
+
+**If you do use this workflow, please cite this using the DOI, which is included in the [About Me](#about-me) section**
 
 ## Considerations before you begin
 I was able to analyze these sequences on a High Performance Computing cluster (HPCC) that uses a Slurm scheduler. The minimum amount of total memory I used (not per CPU, but overall) for each step in this workflow (i.e., each step as a separate 'job' via Slurm) was 400GB. Having enough memory is essential to running most of these programs, so please keep this in mind before embarking on this workflow!
@@ -316,7 +318,7 @@ We can start by loading the libraries we need as well as the path to the sequenc
 ```{r load_packages_path, eval=FALSE}
 getwd() # double check that we are in the correct directory, where are trimmed sequences are stored.
 
-packageVersion("dada2") # Should be 1.16
+packageVersion("dada2") # see which version of DADA2 you have installed
 
 suppressPackageStartupMessages({ # load packages quietly
   library(dada2)
@@ -507,12 +509,18 @@ write.table(track,"16S_tracking_reads_dada2.txt",sep="\t",row.names=TRUE,col.nam
 Now it's time to assign taxonomic identities to our ASVs. Dr. Callahan utilizes the [naive Bayesian classifier](https://pubmed.ncbi.nlm.nih.gov/17586664/) his `assignTaxonomy` function, which is the same classifier used by the [Ribosomal Database Project](https://rdp.cme.msu.edu/) (RDP) for taxonomic assignment. For more information on how this classifier works, please read @Wang2007. 
 
 In order to assign the taxonomic IDs to our ASVs, we need to have a reference database FASTA file to use as our known training data. These training data with known references will help the classifier determine which taxa our ASVs belong to. Currently the options for reference databases include the latest versions of the **Silva** database (for 16S), the **Ribosomal Database Project** database (for 16S), and the **UNITE** database (which should be used specifically for ITS sequences). A **Green Genes** database file is also included (for 16S analyses), but Green Genes has not been updated in a long time and thus is not the best choice for our reference training dataset. Dr. Callahan has included these reference database files [here](https://benjjneb.github.io/dada2/training.html).
+
+The `assignTaxonomy()` command has multiple arguments that can be adjusted as described [here](https://rdrr.io/bioc/dada2/man/assignTaxonomy.html). One specific argument is `tryRC`, which is an option to try the reverse complement of your sequences to query against your database of choice. If `tryRC=TRUE`, then the reverse complement of the query sequence will be used for taxonomic classification of the ASVs if it is a better match to the reference than the forward (or original) sequence. By default `tryRC=FALSE`, however **if you are analyzing ITS2 sequences and used the 5.8S-Fun/ITS4-Fun primer set created by @Taylor2016**, you must set `tryRC=TRUE`. This is because the "Illumina forward adaptor and barcodes were added to the ITS4-Fun primer rather than the 5.8S-Fun primer to avoid excessive hairpin formation" [@Taylor2016]. That means that your F and R reads are in reverse orientation, and that the reverse complement of these reads should be used when comparing these reads to the UNITE database. Thank you to [Dr.Fabiola Pulido-Chavez](https://scholar.google.com/citations?user=EqvoNK4AAAAJ&hl=en) for sharing this helpful info with me!
 ```{r assign_taxa_asv, eval=FALSE}
 taxa <- assignTaxonomy(seqtab.nochim, "/bigdata/aronsonlab/shared/DADA2_Silva_Files/silva_nr99_v138.1_wSpecies_train_set.fa.gz", multithread=TRUE); save.image(file = "mydada_16S.V4.Rdata")
 
+# ITS2 w/ Taylor et al 2016 5.8S-Fun/ITS4-Fun primers
+# taxa <- assignTaxonomy(seqtab.nochim, "/bigdata/aronsonlab/shared/DADA2_Silva_Files/silva_nr99_v138.1_wSpecies_train_set.fa.gz", multithread=TRUE,tryRC=TRUE); save.image(file = "mydada_16S.V4.Rdata")
+
 taxa.print <- taxa # Removing sequence rownames for display only
 rownames(taxa.print) <- NULL
-head(taxa.print) # view taxonomic assignments
+taxa.print<-as.data.frame(apply(taxa.print,2, function(x) gsub("[^.]__", "", x))) # remove leading letters and __ with gsub
+head(taxa.print)
 ```
 If you are only seeing taxonomic identification at the Phyla level (i.e., the rest of the columns are filled with `NAs`), then this could indicate that we have not trimmed our sequences correctly. For example, let's say we have reads that are 300bp long (from 2x300 PE sequencing), but we are interested in the 16S V3 region which ranges from ~ 130-190 nucleotides in length. If we have not trimmed our sequences down to our desired region length (here 130-190 nucleotides), then our merged reads are no longer reliable, and the classifier will incorrectly identify our ASVs. Remember, the reads need to have at least a 12 nucleotide overlap to merge - so if we are not trimming our reads correctly, we could create merged sequences that are not accurate representations of the regions we are trying to identify, which will hurt us in the taxonomic assignment step.
 
@@ -576,11 +584,11 @@ At this point you should have either/or R objects, text files, and tsv files con
 First before we import any data, let's make sure that we are in the right directory (where our `DADA2` files are stored) and that have all of the necessary R libraries loaded.
 ```{r load_libraries, eval=FALSE}
 getwd() # use setwd("path/to/files") if you are not in the right directory
-setwd("/Volumes/HLF_SSD/Sequence_Analyses_scripts/Amplicon_WF_Rmarkdown/Amplicon_WF_SampleData")
 suppressPackageStartupMessages({ # load packages quietly
   library(phyloseq)
   library(ggplot2)
   library(vegan)
+  library(dendextend)
   library(ggpubr)
   library(scales)
   library(grid)
@@ -592,11 +600,12 @@ suppressPackageStartupMessages({ # load packages quietly
   library(tidyr)
   library(reshape)
   library(reshape2)
-  library(wesanderson)
-  library(nationalparkcolors)
   library(shades)
   library(microbiome)
   library(devtools)
+  library(decontam)
+  library(pairwiseAdonis)
+  library(corrplot)
 })
 ```
 Now let's import the `DADA2` output into R for some statistical analyses. We will import our ASV count table, our ASV taxonomic table, and our metadata for this dataset. We are also going to create an object called `colorset1` to contain the color labels for each of our categories. This will help us keep the colors consistent for each category in all of our figures.
@@ -612,7 +621,7 @@ head(bac.ASV_counts)
 ## Import metadata
 metadata<-as.data.frame(read_excel("MSH_MappingFile_for_Workflow.xlsx"), header=TRUE)
 head(metadata)
-metadata<-na.omit(metadata) # drop NAs from metadata
+#metadata<-na.omit(metadata) # drop NAs from metadata
 head(metadata)
 metadata$SampleID<-gsub("(\\_.*?)\\_([0-9])","\\1.\\2", metadata$SampleID) # replace second _ with .
 rownames(metadata)<-metadata$SampleID
@@ -631,56 +640,149 @@ metadata$Category_col <- as.character(metadata$Category_col)
 rownames(metadata)<-metadata$SampleID
 
 ## Import ASV taxonomic data
-bac.ASV_tax<-data.frame(readRDS("16S.V4_MSH_ASVs_Taxonomy_dada2_9.20.2021_Robject.rds", refhook = NULL))
-head(bac.ASV_tax)
+bac.ASV_taxa<-data.frame(readRDS("16S.V4_MSH_ASVs_Taxonomy_dada2_9.20.2021_Robject.rds", refhook = NULL))
+head(bac.ASV_taxa)
 
-bac.ASV_tax[is.na(bac.ASV_tax)]<- "Unknown" # turn all NAs into "Unkowns"
-bac.ASV_tax$Species<-gsub("Unknown", "unknown", bac.ASV_tax$Species) # change uppercase Unkonwn to lowercase unknown for unknown species classification
-head(bac.ASV_tax)
-bac.ASV_tax$ASV_ID<-rownames(bac.ASV_tax) # create ASV ID column to use for merging data frames
-head(bac.ASV_tax)
+bac.ASV_taxa[is.na(bac.ASV_taxa)]<- "Unknown" # turn all NAs into "Unkowns"
+bac.ASV_taxa$Species<-gsub("Unknown", "unknown", bac.ASV_taxa$Species) # change uppercase Unkonwn to lowercase unknown for unknown species classification
+head(bac.ASV_taxa)
+bac.ASV_taxa$ASV_ID<-rownames(bac.ASV_taxa) # create ASV ID column to use for merging data frames
+head(bac.ASV_taxa)
 ```
+With our data imported, we now need to remove any potential contaminates from our ASV table. These are ASVs that were identified in your positive and negative controls. Fortunately we can use the `decontam()` package to do this and create new, "clean" ASV count and taxonomy tables [@Davis2018]. Be sure to have a column in your metadata that tells you exactly which samples are controls. For information on how to properly use `decontam()`, view the tutorial [here](https://benjjneb.github.io/decontam/vignettes/decontam_intro.html).
+
+**NOTE**: In the particular project we are using for this workflow, there were NO PCR or sequencing controls included. Running the code below will lead to an error. Please use the following section of code as a guide for removing decontaminants in your ASV counts data frame.
+```{r remove_contam,eval=FALSE}
+## Identify & Remove Contaminants 
+
+# Create a df that contains which samples in your data set are positive/negative controls
+ControlDF<-metadata[metadata$SampleType=="Control",]
+
+# create a vector for the decontam() pacakge that tells us which sames are controls (TRUE) or not (FALSE)
+vector_for_decontam<-metadata$Sample_or_Control # use for decontam package
+
+#convert bac.ASV_counts data frame to numeric
+bac.ASV_counts[,-length(bac.ASV_counts)] <- as.data.frame(sapply(bac.ASV_counts[,-length(bac.ASV_counts)], as.numeric)) 
+
+# transpose so that rows are Samples and columns are ASVs
+bac.ASV_c2<-t(bac.ASV_counts[,-length(bac.ASV_counts)])
+
+# create data frame of which ASVs are contaminants are not
+contam_df <- isContaminant(bac.ASV_c2, neg=vector_for_decontam)
+
+table(contam_df$contaminant) # identify contaminants aka TRUE
+
+# pull out ASV IDs for contaminating ASVs
+contam_asvs <- (contam_df[contam_df$contaminant == TRUE, ]) 
+
+# see which taxa are contaminants
+bac.ASV_taxa[row.names(bac.ASV_taxa) %in% row.names(contam_asvs),] 
+
+## Create new files that EXCLUDE contaminants!!!
+
+# making new fasta file (if you want)
+#contam_indices <- which(asv_fasta %in% paste0(">", contam_asvs))
+#dont_want <- sort(c(contam_indices, contam_indices + 1))
+#asv_fasta_no_contam <- asv_fasta[- dont_want]
+
+# making new count table
+bac.ASV_counts_no.contam <- bac.ASV_counts[!row.names(bac.ASV_counts) %in% row.names(contam_asvs), ] # drop ASVs found in contam_asvs
+head(bac.ASV_counts_no.contam)
+
+# making new taxonomy table
+bac.ASV_taxa.no.contam <- bac.ASV_taxa[!row.names(bac.ASV_taxa) %in% row.names(contam_asvs), ] # drop ASVs found in contam_asvs
+head(bac.ASV_taxa.no.contam)
+
+# Remove ASVs found in Controls from samples (in addition to contaminants previously ID'd)
+
+Control_counts<-bac.ASV_counts_no.contam[,colnames(bac.ASV_counts_no.contam) %in% ControlDF$SampleID] # see which taxa are contaminants
+Control_counts
+Control_counts<-Control_counts[which(rowSums(Control_counts) > 0),] # drop ASVs that don't appear in Controls
+dim(Control_counts)
+head(Control_counts)
+
+bac.ASV_counts_CLEAN<-bac.ASV_counts_no.contam[!bac.ASV_counts_no.contam$ASV_ID %in% row.names(Control_counts),!colnames(bac.ASV_counts_no.contam) %in% colnames(Control_counts)]
+bac.ASV_taxa_CLEAN<-bac.ASV_taxa.no.contam[!bac.ASV_taxa.no.contam$ASV_ID %in% row.names(Control_counts),]
+
+# sanity check
+colnames(bac.ASV_counts_CLEAN) # check for control sample IDs
+
+## and now writing them out to files
+#write(asv_fasta_no_contam, "ASVs-no-contam.fa")
+write.table(bac.ASV_counts_CLEAN, "data/EnvMiSeq_W23_16S.V3V4_ASVs_Counts_NoContam.tsv",
+            sep="\t", quote=F, col.names=NA)
+saveRDS(bac.ASV_counts_CLEAN, file = "data/EnvMiSeq_W23_16S.V3V4_ASVs_Counts_NoContam_Robject.rds", ascii = FALSE, version = NULL,
+        compress = TRUE, refhook = NULL)
+
+write.table(bac.ASV_taxa_CLEAN, "data/EnvMiSeq_W23_16S.V3V4_ASVs_Taxa_NoContam.tsv",
+            sep="\t", quote=F, col.names=NA)
+saveRDS(bac.ASV_taxa_CLEAN, file = "data/EnvMiSeq_W23_16S.V3V4_ASVs_Taxa_NoContam_Robject.rds", ascii = FALSE, version = NULL,
+        compress = TRUE, refhook = NULL)
+```
+
 ### Data Formatting, Filtering, and Transformation
 Now that we have imported our ASV count table, our ASV taxonomy table, and our metadata, we can start to reformat the actual data objects in R to get them ready for running through the `vegan` suite of tools. First we are going to merge our ASV count table and our ASV taxonomy tables together and filter out some unwanted taxa.
 
-Even though we are analyzing bacterial data, sometimes chloroplast and mitochondrial sequences are attributed to 16S genes. For example, in the Silva database, Chloroplast sequences attributed to Eukaryotes are found within the databases' set of Cyanobacteria sequences. Some sequences within this Chloroplast distinction are actually labeled as bacteria, but they have not been phylogenetically connected to a reference genome. It's important to filter our these eukaryotic sequences before we start playing with statistical analyses.
+Even though we are analyzing bacterial data, sometimes chloroplast and mitochondrial sequences are attributed to 16S genes. For example, in the Silva database, Chloroplast sequences attributed to Eukaryotes are found within the databases' set of Cyanobacteria sequences. Some sequences within this Chloroplast distinction are actually labeled as bacteria, but they have not been phylogenetically connected to a reference genome. It's important to filter our these eukaryotic sequences before we start playing with statistical analyses. We are also going to drop any ASVs that do not have any counts as well as "singletons", which are ASVs with only 1 count in the entire data set.
+
+**NOTE**: Here we are merging the original ASV counts and ASV taxa data frames. If you followed the `decontam()` step, you should be merging the CLEAN versions of these objects. There is a commented-out line of code in the section below that shows this step. 
 ```{r merge_filter_data, eval=FALSE}
 # first we merge the ASV count object and the ASV taxonomy object together by column called "ASV_ID"
-bac.ASV_dat<-merge(bac.ASV_counts,bac.ASV_tax, by="ASV_ID")
+# merge CLEAN aka contaminants/controls removed count & taxa tables
+
+#bac.ASV_all<-merge(bac.ASV_counts_CLEAN,bac.ASV_taxa_CLEAN, by="ASV_ID")
+bac.ASV_all<-merge(bac.ASV_counts,bac.ASV_taxa, by="ASV_ID")
+head(bac.ASV_all)
+dim(bac.ASV_all)
+bac.ASV_all<-bac.ASV_all[, !duplicated(colnames(bac.ASV_all))] # remove col duplicates
+dim(bac.ASV_all)
+
+bac.ASV_dat<-melt(bac.ASV_all)
 head(bac.ASV_dat)
 
+# rename columns
+colnames(bac.ASV_dat)[which(names(bac.ASV_dat) == "variable")] <- "SampleID"
+colnames(bac.ASV_dat)[which(names(bac.ASV_dat) == "value")] <- "Count"
+
+# Drop all Zero counts & singletons ASVs
+dim(bac.ASV_dat)
+bac.ASV_dat<-bac.ASV_dat[which(bac.ASV_dat$Count > 0),]
+dim(bac.ASV_dat)
+
+# Drop Unknowns and Eukaryotic hits
 bac.ASV_dat<-subset(bac.ASV_dat, Kingdom!="Unknown") ## drop Unknowns from Kingdom
 bac.ASV_dat<-subset(bac.ASV_dat, Phylum!="Unknown") ## drop Unknowns from Phylum
 head(bac.ASV_dat)
+dim(bac.ASV_dat)
 
+# Create ASV count file that is filtered of eukaryotic taxa - for later use just in case
+bac.ASV_dat.with.euks<-bac.ASV_dat
+colnames(bac.ASV_dat.with.euks)
+
+# Drop chloroplast & mitochondria seqs
 bac.ASV_dat<-subset(bac.ASV_dat, Class!="Chloroplast") ## exclude Chloroplast sequences
 bac.ASV_dat<-subset(bac.ASV_dat, Order!="Chloroplast") ## exclude Chloroplast sequences
 bac.ASV_dat<-subset(bac.ASV_dat, Family!="Mitochondria") ## exclude Mitochondrial sequences just in case
 
+# check if Eukaryotic and Unknowns are still in your data, this may take a while to run!
 'Chloroplast' %in% bac.ASV_dat # check if Chloroplast counts are still in df, should be false because they've been removed
 'Mitochondria' %in% bac.ASV_dat # check if Mitochondria counts are still in df, should be false because they've been removed
 'Undetermined' %in% bac.ASV_dat # check if undetermined taxa in data frame
+#NA %in% bac.ASV_dat
 
-head(bac.ASV_dat)
-rownames(bac.ASV_dat)<-bac.ASV_dat$ASV_ID
 head(bac.ASV_dat)
 ```
 After dropping unknown or undesired sequences from our combined ASV data frame, it's time to create an ASV table that is properly formatted for the `vegan` package. This ASV table must be a **Samples x Species** matrix, in which our Sample IDs as our row names and our ASV IDs as our column names.
 
 **NOTE**: We could have made this ASV table earlier immediately after importing the ASV count data by transposing the table with the `t()` function. However, I want to have an ASV table that excludes taxa I do not want in my data set, like ASVs attributed to Chloroplast sequences or ASVs attributed to unknown Phyla.
 ```{r create_asv_table, eval=FALSE}
-b.dat.m<-melt(bac.ASV_dat)
-head(b.dat.m)
-colnames(b.dat.m)[which(names(b.dat.m) == "variable")] <- "SampleID"
-colnames(b.dat.m)[which(names(b.dat.m) == "value")] <- "Count"
-
-bac.ASV_table<-as.data.frame(dcast(b.dat.m, SampleID~ASV_ID, value.var="Count", fun.aggregate=sum)) ###
+bac.ASV_table<-as.data.frame(dcast(bac.ASV_dat, SampleID~ASV_ID, value.var="Count", fun.aggregate=sum)) ###
 head(bac.ASV_table)
 rownames(bac.ASV_table)<-bac.ASV_table$SampleID
 bac.ASV_table<-subset(bac.ASV_table, select=-c(SampleID))
 head(bac.ASV_table)
 ```
-The last thing we need to do before we jump into statistical analyses is reformat the metadata to be in the same order (by rows) as our ASV table. **This is a crucial step!** Though it may appear minor, certain functions will not correctly analyze your data if your metadata and your ASV table are not arranged in the same order. This next step will only work if the two data frames we are reordering have the same number of rows AND the same row names.
+Now we can reformat our metadata to be in the same order (by rows) as our ASV table. **This is a crucial step!** Though it may appear minor, certain functions (such as `adonis2()` for example) will not correctly analyze your data if your metadata and your ASV table are not arranged in the same order by rows. This next step will only work if the two data frames we are reordering have the same number of rows AND the same row names.
 ```{r reorder_metadata, eval=FALSE}
 # double check dimensions of metadata and ASV table
 dim(metadata)
@@ -688,6 +790,10 @@ dim(bac.ASV_table)
 # double check that the rownames exist + match
 rownames(metadata)
 rownames(bac.ASV_table)
+
+# Find rows in metadata that are not in ASV table, and vice versa --> sanity check
+setdiff(rownames(metadata), rownames(bac.ASV_table)) # check rows in metadata not in bac.ASV_table
+setdiff(rownames(bac.ASV_table), rownames(metadata)) # check rows in bac.ASV_table not in metadata
 
 # reorder metadata based off of ASV table
 metadata=metadata[rownames(bac.ASV_table),]
@@ -697,6 +803,14 @@ metadata=metadata[rownames(bac.ASV_table),]
 # sanity check to see if this indexing step worked
 head(metadata)
 head(bac.ASV_table)
+```
+Before we jump into statistically analyzing our sequence data, we will want to standardize our environmental data. You may have multiple environmental variables that you've recorded (i.e., temperature, pH, dissolved oxygen concentration, etc.), all of which could be in different units or vary widely in their relative concentrations, variances, etc. It's important that we scale and center our environmental variables so that we can compare variables of different units/concentrations/etc. 
+```{r scale_metadata, eval=FALSE}
+head(metadata)
+meta_scaled<-metadata
+meta_scaled[,17:19]<-scale(meta_scaled[,17:19],center=TRUE,scale=TRUE) # only scale chem env data
+head(meta_scaled)
+
 ```
 Now that all of our files are in R and correctly formatted, we can start some statistical analyses!
 
@@ -762,10 +876,22 @@ Here we are going to create box-and-whisker plots of our alpha diversity and spe
 Each of the individual box-and-whisker plots will be assigned a different color based on the Category variable using the `$Category_col` variable we created earlier.
 ```{r alphadiv_fig, eval=FALSE}
 # shannon diversity by year
-bac.a.div<-ggplot(bac.div.metadat, aes(x=Category, y=Bac_Shannon_Diversity, fill=Category)) +geom_boxplot(color="black")+scale_x_discrete(labels=c("ClearCutSoil"="Clear Cut Soil", "Gopher"="Gopher", "NoGopher"="No Gopher", "OldGrowth"="Old Growth"))+theme_bw()+scale_fill_manual( values=unique(bac.div.metadat$Category_col[order(bac.div.metadat$Category)]), name ="Sample Category", labels=c("ClearCutSoil"="Clear Cut Soil", "Gopher"="Gopher", "NoGopher"="No Gopher", "OldGrowth"="Old Growth"), )+theme_classic()+
+bac.a.div<-ggplot(bac.div.metadat, aes(x=Category, y=Bac_Shannon_Diversity, fill=Category)) +
+  geom_boxplot(color="black")+scale_x_discrete(labels=c("ClearCutSoil"="Clear Cut Soil", "Gopher"="Gopher", "NoGopher"="No Gopher", "OldGrowth"="Old Growth"))+
+  scale_fill_manual( values=unique(bac.div.metadat$Category_col[order(bac.div.metadat$Category)]), name ="Sample Category", labels=c("ClearCutSoil"="Clear Cut Soil", "Gopher"="Gopher", "NoGopher"="No Gopher", "OldGrowth"="Old Growth"), )+
+  theme_classic()+
+  
   labs(title = "Bacterial Shannon Diversity by Sample Category", x="Category", y="Shannon Diversity", fill="Category")+theme(axis.title.x = element_text(size=13),axis.title.y = element_text(size=13),axis.text = element_text(size=11),axis.text.x = element_text(vjust=1),legend.title.align=0.5, legend.title = element_text(size=13),legend.text = element_text(size=11),plot.title = element_text(hjust=0.5, size=15))
 
 ggsave(bac.a.div,filename = "Bacterial_alpha_diversity.png", width=12, height=10, dpi=600)
+
+# ggplot code break down:
+# ggplot(bac.div.metadat, aes(x=Category, y=Bac_Shannon_Diversity, fill=Category)) -- dataset is bac.div.metadat; set aesthetics aka x variable, y variable, and variable for filling in box-whisker plots
+# geom_boxplot(color="black") -- outline of box-whisker plots will be black
+# scale_x_discrete(labels=c()) -- fix the labels of groups in x-axis
+# theme_classic() -- removes grid lines in background of figure
+# labs() -- fix plot labels
+# theme(...) -- these are changing the settings of the fig: setting axis title size, legend title size, alignment of axes and legend labels, etc
 ```
 <center>
 ![](amplicon_workflow/Bacterial_alpha_diversity.png)
@@ -824,30 +950,22 @@ Before going any further, we should transform our data. Data transformation help
 
 Two useful transformations I have seen used are the **variance stabilizing transformation** (i.e, **VST**) and the  **centered log-ratio** transformation (i.e, **CLR**). For information on how to employ this particular transformation, please check out this [tutorial](https://astrobiomike.github.io/amplicon/dada2_workflow_ex#beta-diversity) by the legendary bioinformatician [Dr. Mike Lee](https://astrobiomike.github.io/research/). Though I won't be using the VST transformation, I have not found any literature saying that the CLR transformation is better than VST. The CLR transformation appears to be popular among statisticians, which is why I am choosing to go this route.
 
-We will use the `microbiome` package [@Lahti2019] to CLR transform our count data for creating clustering dendrograms and ordinations. The CLR transformation is recommended in the paper "Microbiome Datasets Are Compositional: And This Is Not Optional" by @Gloor2017, which proposes that microbiome data sets are compositional, meaning they describe relationships between multiple components. @Gloor2017 argues that the reason that CLR transformations are ideal for compositional data is because 1. ratio transformations are useful for detecting relationships in both count data and proportion data, and 2. because log-ratios specifically make the data symmetric in a log space.
+We will use the `vegan` package to CLR transform our count data for creating clustering dendrograms and ordinations. The CLR transformation is recommended in the paper "Microbiome Datasets Are Compositional: And This Is Not Optional" by @Gloor2017, which proposes that microbiome data sets are compositional, meaning they describe relationships between multiple components. @Gloor2017 argues that the reason that CLR transformations are ideal for compositional data is because 1. ratio transformations are useful for detecting relationships in both count data and proportion data, and 2. because log-ratios specifically make the data symmetric in a log space.
 
-A requirement for the `microbiome::transform` function is that it requires a `phyloseq` object (i.e., a type of object created by the `phyloseq` package; @McMurdie2013) as input. Let's create our phyloseq object with our `bac.ASV_counts` matrix and add a small pseudocount to the cells in our matrix containing `0s`. It's important to change all of the 0s to a very small number so that the log of 0 is not taken in our transformation (@Quinn2021). To better understand how CLR transformation works and why its a useful transformation for microbiome data, watch this great [YouTube video](https://www.youtube.com/watch?v=fQPCeV4MUe4) created by [Dr. Thomas Quinn](https://tpq.github.io/) and read "Normalization and microbial differential abundance strategies depend upon data characteristics" by @Weiss2017. For more information on the pros and cons of the CLR transformation, please read "A field guide for the compositional analysis of any-omics data" by @Quinn2019. 
+It's important to change all of the 0s in our ASV table to a very small number so that the log of 0 is not taken in our transformation (@Quinn2021). To account for this, we include the `pseudocount = 1` argument in the `decostand()` function, which will add a small pseudocount to the cells in our matrix containing `0s`.  To better understand how CLR transformation works and why its a useful transformation for microbiome data, watch this great [YouTube video](https://www.youtube.com/watch?v=fQPCeV4MUe4) created by [Dr. Thomas Quinn](https://tpq.github.io/) and read "Normalization and microbial differential abundance strategies depend upon data characteristics" by @Weiss2017. For more information on the pros and cons of the CLR transformation, please read "A field guide for the compositional analysis of any-omics data" by @Quinn2019. 
 ```{r clr_transformation, eval=FALSE}
-# turning bac.ASV_counts into phyloseq object called ASV
-## bac.ASV_counts[,-ncol(bac.ASV_counts)] allows us to drop the last column in the data frame, which in this case is a column of ASV IDs
-ASV<-otu_table(as.matrix(bac.ASV_counts[,-ncol(bac.ASV_counts)]), taxa_are_rows = TRUE)
-head(ASV)
-class(ASV) # phyloseq otu_table object
-
-# add pseudocount bfore transformation!
-ASV[ASV==0]<-0.001
-head(ASV)
-
-# CLR transformation on phyloseq object
-asv_clr<-microbiome::transform(ASV, "clr")
-head(asv_clr)
+# CLR transformation of ASV table
+# df must have rownames are SampleIDs, columns are ASV IDs for vegan functions below
+b.clr<-decostand(bac.ASV_table[,-1],method = "clr", pseudocount = 1) #CLR transformation
+b.clr[1:4,1:4]
 ```
 
 ### Hierarchical Clustering
-Now that we have our transformed ASV counts, we can create a Euclidean distance matrix that will describe how close (aka similar) our samples are to each other based on their microbial composition. The Euclidean distance between CLR-Transformed compositional data is known as **Aitchison Distance** [@Quinn2018].
+Now that we have our CLR-transformed ASV counts, we can create a Euclidean distance matrix that will describe how close (aka similar) our samples are to each other based on their microbial composition. The Euclidean distance between CLR-Transformed compositional data is known as **Aitchison Distance** [@Quinn2018].
 ```{r clustering_exposure, eval=FALSE}
-# create CLR Sample x Species matrix for input into dist()
-b.clr<-as.matrix(t(asv_clr))
+# check rownames of CLR transformed ASV data & metadata
+rownames(b.clr) %in% rownames(meta_scaled)
+meta_scaled=meta_scaled[rownames(b.clr),] ## reorder metadata to match order of CLR data
 
 # calculate our Euclidean distance matrix using CLR data (aka Aitchison distance)
 b.euc_dist <- dist(b.clr, method = "euclidean")
@@ -882,10 +1000,13 @@ Generally a PCoA is used at looking at how similar your samples are to each othe
 
 PCoAs were developed so that we can create these ordinations using distances that are NOT Euclidean, for example like Bray-Curtis dissimilarity distances. PCoAs come from **Principal Component Analysis**, which is specifically used for Euclidean distances. For more information on PCAs, check out this [StatQuest YouTube video](https://youtu.be/FgakZw6K1QQ) as well as this [tutorial](https://ourcodingclub.github.io/tutorials/ordination/) that compares PCAs to PCoAs.
 
+One reason PCoAs are often preferred over PCAs in microbial ecology is that PCAs are very sensitive to the presence of 0s, which is something we experience with microbial amplicon sequence data. For example, if two samples are missing ASV 1 and ASV 2, these two samples could be interpreted as being similar based on the species they are *missing*, not the species they share. For more on comparing PCAs to PCoAs, please check out this [link](https://ourcodingclub.github.io/tutorials/ordination/#:~:text=While%20PCA%20is%20based%20on,to%20the%20data%20in%20question.).
+
 Let's generate our PCoA and a PCA and check out the proportion of variance explained by our axes. The reason I am showing you how to generate both is because a PCoA using Euclidean distances is equivalent to a PCA. This is a useful way to confirm that our data is actually Euclidean in nature. 
 ```{r pcoa_clr,eval=FALSE}
 # let's use our Euclidean distance matrix from before to generate a PCoA
 b.pcoa <- pcoa(b.euc_dist)
+
 # Variance explained by each axis is the Relative eigen (values$Relative_eig)
 b.pcoa$values$Relative_eig
 
@@ -912,6 +1033,12 @@ b.pcoa$values$Relative_eig # pull out relative variation % to add to axes labels
 pcoa1<-ggplot(b.pcoa.meta, aes(x=Axis.1, y=Axis.2)) +geom_point(aes(color=factor(Category)), size=4)+theme_bw()+labs(title="PCoA: Bacteria/Archaea",subtitle="Using Centered-Log Ratio Data",xlab="Axis 1", ylab="Axis 2",color="Sample Category")+theme_classic()+ theme(axis.title.x = element_text(size=15),axis.title.y = element_text(size=15),legend.title.align=0.5, legend.title = element_text(size=15),axis.text = element_text(size=12),axis.text.x = element_text(vjust=1),legend.text = element_text(size=12),,plot.title = element_text(size=17))+guides(shape = guide_legend(override.aes = list(size = 5)))+scale_color_manual(name ="Sample Category", labels=c("ClearCutSoil"="Clear Cut Soil", "Gopher"="Gopher", "NoGopher"="No Gopher", "OldGrowth"="Old Growth"),values=unique(b.pcoa.meta$Category_col[order(b.pcoa.meta$Category)])) +xlab("Axis 1 [8.94%]") + ylab("Axis 2 [5.69%]")
 
 ggsave(pcoa1,filename = "16S_pcoa_CLR.png", width=12, height=10, dpi=600)
+
+## ggplot code break down:
+# guides(shape = guide_legend(override.aes = list(size = 5))) -- make shapes in legend bigger
+# scale_color_manual(name =, labels=c(),values=unique(b.pcoa.meta$Category_col[order(b.pcoa.meta$Category)])) -- organize color variable in our data frame by the category its associated with
+# xlab() -- x-axis label
+# ylab() -- y-axis label
 ```
 <center>
 ![](amplicon_workflow/16S_pcoa_CLR.png)
@@ -973,6 +1100,9 @@ The reason that our dispersion results are problematic is that if we try to comp
 A PERMANOVA is similar to an ANOVA in that both analyses compare differences between groups (using *sum-of-squares*), but a PERMANOVA runs multiple permutations to compare these *distances* to each other - whereas an ANOVA is comparing group *averages* to each other without the use of permutations. Another difference is that while ANOVAs assume that the data is normally distributed, the PERMANOVA assumes that the groups have equal variance (dispersion). For more information on PERMANOVAs and comparing group variances, check out this very helpful [link](https://archetypalecology.wordpress.com/2018/02/21/permutational-multivariate-analysis-of-variance-permanova-in-r-preliminary/) by [Dr. Joshua Ebner](https://scholar.google.com/citations?user=0U4m9BUAAAAJ&hl=en).
 
 Even though we should not run a PERMANOVA with these data, let's go over how we would run a PERMANVOA. **The most crucial thing about running a PERMANOVA in R is that your feature table and your metadata need to be in the same order by row!** The program does not know to match up sample IDs or labels to each other, so you have to confirm that your data frames are arranged in the same way by row before running the PERMANOVA. We can then run our PERMANOVA including multiple variables of interest. We can see if there are interactions between multiple variables and our compositional data respectively with `+` (i.e, `var1 + var2`), or we can check for interactions between our variables and our composition data with `*` (i.e, `var1 * var2`).
+
+**NOTE**: Using `adonis2()` with *Continuous* Variables!
+The variation explained is directly analogous to that of **general linear models**. With a continuous variable, the PERMANOVA acts like simple linear regression, where each point is associated with its own "centroid" which is the best fit linear approximation. For a more in-depth explanation of this, please check out this [link](https://uw.pressbooks.pub/appliedmultivariatestatistics/chapter/permanova/).
 ```{r permanova_practice, eval=FALSE}
 # check your rownames and the order of the rownames for ordering step
 rownames(b.clr)
@@ -1017,12 +1147,15 @@ dev.off()
 As predicted by the `betadisper()` results, we are seeing a significant difference in community composition between our groups. Again, for this data set we can't really know if these differences are meaningful because the within-group disperions (aka variances) are NOT homogenous - so the significance we are seeing here is likely due to dispersion effects rather than real differences between groups. 
 
 ## Relative Abundance
-So we know our microbial communities are similar to each other if they're from the same sample category, and that the microbiomes from each category are quite different from each other...but what about the actual taxa within those communities? Calculating the relative abundance allows us to determine how abundant certain taxa are compared to the rest of the taxa within a specific sample. In order to get a better sense of the microbial community in our samples, we need to calculate the relative abundance at varying taxonomic levels. We can also calculate the relative abundance by group; for example, we can determine the relative contribution of taxa 1 compared to the rest of the microbial commiunity in Group A. 
+So we know our microbial communities are similar to each other if they're from the same sample category, and that the microbiomes from each category are quite different from each other...but what about the actual taxa within those communities? Calculating the relative abundance allows us to determine how abundant certain taxa are compared to the rest of the taxa within a specific sample. In order to get a better sense of the microbial community in our samples, we need to calculate the relative abundance at varying taxonomic levels. We can also calculate the relative abundance by group; for example, we can determine the relative contribution of taxa 1 compared to the rest of the microbial commiunity in Group A.
 
 Let's merge our ASV taxonomy table to our metadata table. This will help us create a data frame that we can use to get the sum of our ASV counts across specific taxonomic levels.
+
+**NOTE**: Here we are merging the original ASV counts and ASV taxa data frames. If you followed the `decontam()` step, you should be merging the CLEAN versions of these objects. There is a commented-out line of code in the section below that shows this step. 
 ```{r merge_tax_met,eval=FALSE}
-bac.all<-merge(bac.ASV_counts, bac.ASV_tax, by="ASV_ID")
-head(bac.all)
+#bac.all<-merge(bac.ASV_counts_CLEAN, bac.ASV_taxa_CLEAN, by="ASV_ID")
+# bac.all<-merge(bac.ASV_counts, bac.ASV_taxa, by="ASV_ID")
+head(bac.ASV_all)
 bac_melt<-melt(bac.all, id.vars = c("ASV_ID", "Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"))
 head(bac_melt)
 names(bac_melt)[which(names(bac_melt) == "variable")] <- "SampleID"
@@ -1034,7 +1167,7 @@ head(metadata)
 all_bac<-merge(bac_melt, metadata, by = "SampleID")
 head(all_bac) # contains metadata, ASV counts, and taxonomic IDs for ASVs
 ```
-Using the `all_bac` data frame containing our data and metadata altogether and the `dcast()` function from the `reshape2` package [], we can create data frames that contain counts by taxonomic levels. We will then use these data frames to get the relative abundance at specific taxonomic levels. Because I am using a bacterial data set, I am only going to calculate the relative abundance at the phyla and class levels. Though we could get deeper taxonomic resolution, the visualization at these levels can be really overwhelming because there are SO many taxa present. 
+Using the `all_bac` data frame containing our data and metadata altogether and the `dcast()` function from the `reshape2` package [@Wickham2007], we can create data frames that contain counts by taxonomic levels. We will then use these data frames to get the relative abundance at specific taxonomic levels. Because I am using a bacterial data set, I am only going to calculate the relative abundance at the phyla and class levels. Though we could get deeper taxonomic resolution, the visualization at these levels can be really overwhelming because there are SO many taxa present. 
 
 Remember that when calculating your relative abundance, each count per taxa in each sample is divided by the sum of all the counts for that sample. This means that when you sum up all of the relativized values for each sample, they should sum up to 1. We can use this fact to help us check whether our relativization worked.
 ```{r calculate_relative_abundance, eval=FALSE}
@@ -1173,8 +1306,16 @@ A RDA can tell us whether our environmental variables explain the variation we o
 So at this point you're probably asking yourself "how do I know if my data has a unimodal or linear relationship with my environmental variables?", and that's a great question! We can use a **Detrended Correspondence Analysis** (aka DCA) to help us decide whether we should use a CCA or an RDA for our composition data. If the length of our first DCA axis is *longer than 4*, that indicates that our data is heterogeneous and requires unimodal methods like a CCA. If the length of our first DCA axis is *less than 3*, the data is considered homogeneous and thus requires linear methods like an RDA. If your first axis length is between 3 and 4, then it's up to you to choose whether to use an RDA or a CCA.
 
 For more information on how CCAs and RDAs are calculated and their applications, please view this helpful [tutorial](http://dmcglinn.github.io/quant_methods/lessons/multivariate_models.html) for a deep look into different Euclidean-based ordinations. I also recommend watching Dr. Ralf Shaefer's [YouTube video on RDAs](https://www.youtube.com/watch?v=AjU6s7-EBGY&t=1s) as well as this helpful [YouTube video](https://youtu.be/tVnnG7mFeqA) that walks you through different ordination techniques using the `vegan` package in R.
+### Prep Step 1: Check for Correlations Among Environmental Variables
 
-### Prep Step 1: Detrended Correspondence Analysis (DCA)
+```{r corr_env_var, eval=FALSE}
+## check the assumption
+chem_data<-subset(metadata, select=c(Cu, Mn, P))
+pairs(c(b.clr[1:2,1:2],chem_data))
+
+
+```
+### Prep Step 2: Detrended Correspondence Analysis (DCA)
 Let's first run a DCA to determine the length of our first axis and decide which ordination technique to use. For this we are going to use our **CLR-transformed ASV table** as our site x species matrix. The `decorana()` function from vegan performs the DCA, which requires that the row sums are greater than zero. Because clr transformed data can have negative values, I've decided to add a pseudocount of 1 to the matrix to fulfill the requirements of the `decorana()` function.
 
 **Note: The chemical data I will be using for this portion of the workflow is not real data from this project. These data come from a different project and are being used just for this example.**
@@ -1182,9 +1323,6 @@ Let's first run a DCA to determine the length of our first axis and decide which
 ## remember, CCA assumes that our species have a unimodal relationship with our variables.
 ### unimodal = one maximum, think upsidedown bellcurve or something
 ## RDA assumes a linear relationship
-## check the assumption
-chem_data<-subset(metadata, select=c(Cu, Mn, P))
-pairs(c(b.clr[1:2,1:2],chem_data))
 
 ## The length of first DCA axis:
 ## > 4 indicates heterogeneous dataset on which unimodal methods should be used (CCA), 
@@ -1201,17 +1339,14 @@ summary(b.dca) #DCA1 axis length = 1.7990; use RDA
 ```
 Our first DCA axis has a length of 1.7990, which suggests that we should run an RDA with our data. 
 
-### Prep Step 2: Scale Environmtanl Data & Subset
-We first want to scale our environmental data so that they are comparable to each other, despite their initial measurements being vastly different (i.e., your mg of Cu and mg of P are not immediatley comparable). At this point, we could jump into doing an RDA...but it may be more informative if we look at the environmental drivers of each category or site one by one rather than considering the drivers across sites. 
+### Prep Step 3: Subset Environmental Data
+We have alreadys caled our environmental data (the `meta_scaled` data frame) so that they are comparable to each other, despite their initial measurements being vastly different (i.e., your mg of Cu and mg of P are not immediately comparable). At this point, we could jump into doing an RDA...but it may be more informative if we look at the environmental drivers of each category or site one by one rather than considering the drivers across sites. 
 
 To subset our data, we will use the `lapply()` function: if `metdata$Category` is the same as (`==`) the element(s) in `site_list`, subset the metadata data frame by the `site_list` element into a new list called `site_subsets`. After this step, we will have a list where each element in the list (`site_subsets[[i]]`) will contain all of the metadata for each respective Category.
 
 I have also provided examples on how to subset lists for practice - indexing in R can be tricky in the beginning, and personally I need to review it often.
 ```{r subset_metadata_category, eval=FALSE}
-# create metadata df that will have scaled chemical data
-meta_scaled<-metadata
-head(meta_scaled)
-meta_scaled[,17:19]<-as.data.frame(scale(meta_scaled[,17:19], center=TRUE, scale=TRUE)) #not centering before scaling
+# recall our scaled metadata df
 head(meta_scaled)
 
 unique(meta_scaled$Category)
@@ -1405,7 +1540,7 @@ Please keep in mind that this is a collection of scripts and analyses that I hav
 
 If you'd like to get a hold of me to offer me feedback about this workflow, or if you'd like to discuss more of these steps/programs/stats in depth, do not hestitate to reach out. My contact information is in the [About Me](#about-me) section.
 
-Thank you for following along!
+Thank you for following along! 
 
 # Version Information
 ```{r sessionInfo}
@@ -1421,6 +1556,11 @@ If you have any questions regarding this workflow and the scripts I used, do not
 
 <center>
 [![Download AmpliconSequencingWorfklow](https://a.fsdn.com/con/app/sf-download-button)](https://sourceforge.net/projects/amplicon-sequencing-worfklow/files/latest/download)
+</center>
+
+
+<center>
+[![DOI](https://zenodo.org/badge/414102702.svg)](https://zenodo.org/badge/latestdoi/414102702)
 </center>
 
 # References

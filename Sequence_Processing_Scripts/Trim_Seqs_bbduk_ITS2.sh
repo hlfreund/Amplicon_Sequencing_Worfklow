@@ -14,39 +14,19 @@
 
 module load BBMap
 
-path=/your/path/here
+#path=/your/path/here
 
 if [[ ! -d ./Trimmed_Seqs ]]; then
     mkdir Trimmed_Seqs
-    mkdir Trimmed_Seqs/16S_Trimmed
-    mkdir Trimmed_Seqs/ITS2_Trimmed
 fi
 
-#if [[ ! -d ./Trimmed_Seqs/16S_Trimmed ]]; then
-#    mkdir Trimmed_Seqs/16S_Trimmed
-#fi
-
-#if [[ ! -d ./Trimmed_Seqs/ITS2_Trimmed ]]; then
-#    mkdir Trimmed_Seqs/ITS2_Trimmed
-#fi
-
-# trim lengths based on amplicons that are 300 bp
-for i in 16S_Seqs/*_R1.fastq;
-do
-    f=$(basename $i)
-    SAMPLE=${f%_R*}
-    
-    bbduk.sh -Xmx10g in1=${path}/16S_Seqs/${SAMPLE}_R1.fastq in2=${path}/16S_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/16S_Trimmed/${SAMPLE}_R2_clean.fastq  ref=/opt/linux/rhel/8.x/x86_64/pkgs/BBMap/38.95/resources/adapters.fa ftl=15 ftr=285 rcomp=t ktrim=r k=23 maq=10 minlength=250 mink=11 hdist=1 tpe tbo
-    
-done
-
 # NOTE: remember that for ITS2, trimming should just be about removing adapters and potentially poor quality reads, but not trying to get a specific length due to the variability in the length of this locus
-for i in ITS2_Seqs/*_R1.fastq;
+for i in *_R1.fastq;
 do
     f=$(basename $i)
     SAMPLE=${f%_R*}
     
-    bbduk.sh -Xmx10g in1=${path}/ITS2_Seqs/${SAMPLE}_R1.fastq in2=${path}/ITS2_Seqs/${SAMPLE}_R2.fastq out1=${path}/Trimmed_Seqs/ITS2_Trimmed/${SAMPLE}_R1_clean.fastq out2=${path}/Trimmed_Seqs/ITS2_Trimmed/${SAMPLE}_R2_clean.fastq ref=/opt/linux/rhel/8.x/x86_64/pkgs/BBMap/38.95/resources/adapters.fa ftl=15 ftr=290 rcomp=t ktrim=r k=23 maq=10 minlength=260 mink=11 hdist=1 tpe tbo
+    bbduk.sh -Xmx10g in1=${SAMPLE}_R1.fastq in2=${SAMPLE}_R2.fastq out1=./Trimmed_Seqs/${SAMPLE}_R1_clean.fastq out2=./Trimmed_Seqs/${SAMPLE}_R2_clean.fastq ref=/opt/linux/rhel/8.x/x86_64/pkgs/BBMap/38.95/resources/adapters.fa ftl=5 ftr=290 rcomp=t ktrim=r k=23 maq=10 minlength=250 mink=11 hdist=1 tpe tbo
     
 done
 

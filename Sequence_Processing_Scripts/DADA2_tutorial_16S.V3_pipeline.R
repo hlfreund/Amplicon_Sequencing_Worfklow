@@ -49,8 +49,8 @@ sample.names
 
 plot1<-plotQualityProfile(fnFs[1:2])
 plot2<-plotQualityProfile(fnRs[1:2])
-ggsave(plot1,filename = "16S.V3_pretrim_DADA2_F_quality_8.30.2021.pdf", width=15, height=12, dpi=600)
-ggsave(plot2,filename = "16S.V3_pretrim_DADA2_R_quality_8.30.2021.pdf", width=15, height=12, dpi=600)
+ggsave(plot1,filename = "16S.V3_pretrim_DADA2_F_quality.pdf", width=15, height=12, dpi=600)
+ggsave(plot2,filename = "16S.V3_pretrim_DADA2_R_quality.pdf", width=15, height=12, dpi=600)
 
 #### Filter + Trim ####
 
@@ -85,7 +85,7 @@ errR <- learnErrors(filtRs, multithread=TRUE); save.image(file = "mydada_16S.V3.
 # As in many machine-learning (ML) problems, the algorithm must begin with an initial guess, for which the maximum possible error rates in this data are used (the error rates if only the most abundant sequence is correct and all the rest are errors)
 
 plot_error<-plotErrors(errF, nominalQ=TRUE)## sanity check by visualizing estimated error rates -- should see error rates drop w/ increased quality
-ggsave(plot_error,filename = "16S.V3_errormodel_DADA2_8.30.2021.pdf", width=15, height=15, dpi=600)
+ggsave(plot_error,filename = "16S.V3_errormodel_DADA2.pdf", width=15, height=15, dpi=600)
 
 ## Error rates for each possible transition: A2A (A -> A), A2C (A -> C), etc
 ## Points are observed error rates for each consensus quality score
@@ -120,10 +120,10 @@ head(mergers[[1]])
 ## PAIRED-END READS ##
 seqtab <- makeSequenceTable(mergers); save.image(file = "mydada_16S.V3.Rdata")
 dim(seqtab)
-seqtab3 <- seqtab[,nchar(colnames(seqtab)) %in% 150:200]
-dim(seqtab3)
+seqtab2 <- seqtab[,nchar(colnames(seqtab)) %in% 150:200]
+dim(seqtab2)
 
-sum(seqtab3)/sum(seqtab)
+sum(seqtab2)/sum(seqtab)
 # article on V3 length: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5785224/
 # note on trimming V3-V4 regions: https://github.com/benjjneb/dada2/issues/1033#issuecomment-641281945
 # *** note on how long V3-V4 region is: https://www.nature.com/articles/sdata20197
@@ -139,38 +139,33 @@ write.table(seqtab,"16S.V3_Read_Length_Counts_dada2.txt",sep="\t",row.names=TRUE
 
 #### Inspect distribution of sequence lengths ####
 table(nchar(getSequences(seqtab)))
-table(nchar(getSequences(seqtab3)))
-sum(seqtab3)/sum(seqtab)
-#table(nchar(getSequences(seqtab2))) # Multiple length reads after cutadapt - ITS1 are of variable length (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5309391/)
+table(nchar(getSequences(seqtab2)))
+sum(seqtab2)/sum(seqtab)
+# Multiple length reads after cutadapt - ITS1 are of variable length (https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5309391/)
 
 # Sequences that are much longer or shorter than expected may be the result of non-specific priming...#
 # You can remove non-target-length sequences from your sequence table vvvv
 #seqtab3 <- seqtab[,nchar(colnames(seqtab)) %in% 250:256] # specifying length between 250 - 256
 
 ## Look at merged sequences in a plot -- see their distribution and frequency of sequences of certain length
-compare_reads_plot = ggdensity(rowSums(seqtab3), fill = "blue4", alpha = 0.7); save.image(file = "mydada_16S.V3.Rdata")
-pdf(file = "16S.V3_compare_plots_8.30.20.pdf", height = 10, width = 12) # Make empty pdf
-compare_reads_plot # Add plot to empty pdf
+compare_reads_plot1 = ggdensity(rowSums(seqtab), fill = "blue4", alpha = 0.7); save.image(file = "mydada_16S.V4.Rdata")
+compare_reads_plot2 = ggdensity(rowSums(seqtab2), fill = "red4", alpha = 0.7)
+comp_plots<-ggarrange(compare_reads_plot1, compare_reads_plot2,labels=c("All Reads", "Reads of Desired Length"),ncol=1, nrow=2)
+ggsave(comp_plots,filename = "ITS2_compare_total_reads.pdf", width=10, height=20, dpi=600)
 dev.off()
-png(file = "rarecurve_example.png", height = 10, width = 12) # Make empty pdf
 
 # ## Look at F reads only
-# compare_reads_F_its2=ggdensity(rowSums(seqtab3), fill = "red4", alpha = 0.7)
+# compare_reads_F_its2=ggdensity(rowSums(seqtab2), fill = "red4", alpha = 0.7)
 # pdf(file = "compare_plots2_F_its2_7.9.20.pdf", height = 10, width = 12) # Make empty pdf
 # compare_reads_F_its2 # Add plot pdf
 # dev.off()
-#
-# ## Compare Merged + F Reads in one plot
-# pdf(file = "compare_plots2.pdf", height = 10, width = 12) # Make empty pdf
-# ggdensity(gather(data.frame(Merged = rowSums(seqtab), FwdOnly = rowSums(seqtab2)), key = "Method", value = "ReadCount"), x = "ReadCount", fill = "Method", alpha = 0.7, palette = "tron", ggtheme = theme_dark())
-# dev.off()
 
 #### Remove Chimeras ####
-seqtab.nochim <- removeBimeraDenovo(seqtab3, method="consensus", multithread=TRUE, verbose=TRUE); save.image(file = "mydada_16S.V3.Rdata")
+seqtab.nochim <- removeBimeraDenovo(seqtab2, method="consensus", multithread=TRUE, verbose=TRUE); save.image(file = "mydada_16S.V3.Rdata")
 # Chimeric sequences are identified if they can be exactly reconstructed by combining a left-segment and a right-segment from two more abundant “parent” sequences
 dim(seqtab.nochim)
 sum(seqtab.nochim)/sum(seqtab) # comparing reads after chimera removal over total reads (after filtering)
-sum(seqtab.nochim)/sum(seqtab3)
+sum(seqtab.nochim)/sum(seqtab2)
 # Most of your reads should remain after chimera removal (it is not uncommon for a majority of sequence variants to be removed though)
 
 #filtFs <- filtFs[file.exists(filtFs)] # removes files that were not included in output because 0 reads passed filter step
@@ -227,8 +222,8 @@ for (i in 1:dim(seqtab.nochim)[2]) {
 asv_fasta <- c(rbind(asv_headers, asv_seqs))
 head(asv_fasta)
 # making and writing out a fasta of our final ASV seqs:
-write(asv_fasta, "16S.V3_ASVs_dada2_8.30.2021.fa") # write fasta file
-write.table(asv_fasta,"16S.V3_ASVs_dada2_8.30.2021.txt",sep="\t",row.names=TRUE,col.names=TRUE)
+write(asv_fasta, "16S.V3_ASVs_dada2.fa") # write fasta file
+write.table(asv_fasta,"16S.V3_ASVs_dada2.txt",sep="\t",row.names=TRUE,col.names=TRUE)
 
 # count table:
 asv_tab <- t(seqtab.nochim)
@@ -239,21 +234,21 @@ write.table(asv_tab_veg, "16S.V3_ASVs_Table_dada2.tsv", sep="\t", quote=F, col.n
 write.table(asv_tab_veg,"16S.V3_ASVs_Table_dada2.txt",sep="\t",row.names=TRUE,col.names=TRUE)
 
 # For Phyloseq format: ASVs as row IDs, sample IDs as columns
-write.table(asv_tab, "16S.V3_ASVs_Counts_dada2_8.30.2021.tsv", sep="\t", quote=F, col.names=NA)
-write.table(asv_tab,"16S.V3_ASVs_Counts_dada2_8.30.2021.txt",sep="\t",row.names=TRUE,col.names=TRUE)
+write.table(asv_tab, "16S.V3_ASVs_Counts_dada2.tsv", sep="\t", quote=F, col.names=NA)
+write.table(asv_tab,"16S.V3_ASVs_Counts_dada2.txt",sep="\t",row.names=TRUE,col.names=TRUE)
 
 # tax table:
 asv_tax <- taxa
 row.names(asv_tax) <- sub(">", "", asv_headers)
-write.table(asv_tax, "16S.V3_ASVs_Taxonomy_dada2_8.30.2021.tsv", sep="\t", quote=F, col.names=NA)
-write.table(asv_tax,"16S.V3_ASVs_Taxonomy_dada2_8.30.2021.txt",sep="\t",row.names=TRUE,col.names=TRUE)
+write.table(asv_tax, "16S.V3_ASVs_Taxonomy_dada2.tsv", sep="\t", quote=F, col.names=NA)
+write.table(asv_tax,"16S.V3_ASVs_Taxonomy_dada2.txt",sep="\t",row.names=TRUE,col.names=TRUE)
 
 #### Save as R objects ####
-saveRDS(asv_tax, file = "16S.V3_ASVs_Taxonomy_dada2_8.30.2021_Robject.rds", ascii = FALSE, version = NULL,
+saveRDS(asv_tax, file = "16S.V3_ASVs_Taxonomy_dada2_Robject.rds", ascii = FALSE, version = NULL,
         compress = TRUE, refhook = NULL)
-saveRDS(asv_tab, file = "16S.V3_ASVs_Counts_dada2_8.30.2021_Robject.rds", ascii = FALSE, version = NULL,
+saveRDS(asv_tab, file = "16S.V3_ASVs_Counts_dada2_Robject.rds", ascii = FALSE, version = NULL,
         compress = TRUE, refhook = NULL)
-saveRDS(asv_fasta, file = "16S.V3_ASV_Sequences_dada2_8.30.2021_Robject.rds", ascii = FALSE, version = NULL,
+saveRDS(asv_fasta, file = "16S.V3_ASV_Sequences_dada2_Robject.rds", ascii = FALSE, version = NULL,
         compress = TRUE, refhook = NULL)
 
 #### Remove Decontaminants with decontam package ####

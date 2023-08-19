@@ -10,7 +10,7 @@
 #SBATCH --mail-user=hfreu002@ucr.edu
 #SBATCH --mail-type=ALL
 #SBATCH --job-name="FastQC_QualCheck"
-#SBATCH -p batch
+#SBATCH -p aronsonlab
 
 module load fastqc/0.11.9
 
